@@ -70,7 +70,7 @@ export default function WorkerProfile() {
   const fetchWorkerProfile = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`http://localhost:8080/api/worker/worker/${id}`);
+      const response = await fetch(`http://localhost:8080/api/worker/${id}`);
       const data = await response.json();
 
       if (response.ok) {

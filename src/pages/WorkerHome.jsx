@@ -186,54 +186,70 @@ export default function WorkerHome() {
       return "Unable to transcribe audio. Please try text input instead.";
     }
   };
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!validateStep2()) return;
+  setIsLoading(true);
+  setError(null);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateStep2()) return;
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      let textDesc = "";
-      
-      if (inputMethod === "voice") {
-        textDesc = await convertSpeechToText(formData.voiceBlob);
-      } else {
-        textDesc = `Experience: ${formData.experience.trim()}. Skills: ${formData.skills.trim()}`;
-      }
-
-      const data = new FormData();
-      data.append("text", textDesc);
-      data.append("aadhaarNumber", formData.aadhaarNumber.trim());
-      data.append("photo", formData.profileImage);
-      if (formData.aadhaarImage) {
-        data.append("aadhaarImage", formData.aadhaarImage);
-      }
-
-      // TODO: Replace with your actual API endpoint
-      // const resp = await fetch("/api/worker/profile", { 
-      //   method: "POST", 
-      //   body: data 
-      // });
-      // if (!resp.ok) throw new Error("Failed to save profile");
-      // const json = await resp.json();
-
-      // Simulate success
-      console.log("Profile data:", Object.fromEntries(data.entries()));
-      
-      setTimeout(() => {
-        setIsLoading(false);
-        alert("Profile saved successfully!");
-
-        // Navigate to profile page
-         navigate("/worker-profile");
-      }, 1500);
-    } catch (err) {
-      console.error("Submit error:", err);
-      setError("Something went wrong. Please try again.");
-      setIsLoading(false);
+  try {
+    // Check authentication first
+    const authToken = localStorage.getItem("token");
+    if (!authToken) {
+      setError("Authentication required. Please sign in again.");
+      navigate("/signin");
+      return;
     }
-  };
+
+    let textDesc = "";
+    
+    if (inputMethod === "voice") {
+      textDesc = await convertSpeechToText(formData.voiceBlob);
+    } else {
+      textDesc = `Experience: ${formData.experience.trim()}. Skills: ${formData.skills.trim()}`;
+    }
+
+    const data = new FormData();
+    data.append("text", textDesc);
+    data.append("aadhaarNumber", formData.aadhaarNumber.trim());
+    data.append("photo", formData.profileImage);
+    if (formData.aadhaarImage) {
+      data.append("aadhaar", formData.aadhaarImage);
+    }
+
+    const resp = await fetch("http://localhost:8080/api/worker/generate-card", { 
+      method: "POST", 
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: data 
+    });
+
+    if (!resp.ok) {
+      const errorData = await resp.json();
+      throw new Error(errorData.error || errorData.message || "Failed to save profile");
+    }
+
+    const json = await resp.json();
+    console.log("Profile created:", json);
+
+    setIsLoading(false);
+    alert("Profile saved successfully!");
+
+    // ✅ FIX: Check if worker._id exists before navigating
+    if (json.worker && json.worker._id) {
+      navigate(`/worker-profile/${json.worker._id}`);
+    } else {
+      console.error("Worker ID not returned:", json);
+      setError("Profile created but ID missing. Please refresh.");
+    }
+
+  } catch (err) {
+    console.error("Submit error:", err);
+    setError(err.message || "Something went wrong. Please try again.");
+    setIsLoading(false);
+  }
+};
 
   const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 

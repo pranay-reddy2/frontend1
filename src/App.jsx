@@ -10,12 +10,12 @@ import WorkerProfile from "./pages/WorkerProfile";
 function App() {
   return (
     <Routes>
-      <Route path="/" element=<SignIn /> />
-      <Route path="/signup" element=<SignUp /> />
+      <Route path="/" element={<SignIn />} />
+      <Route path="/signup" element={<SignUp />} />
       <Route path="/worker-home" element={<WorkerHome />} />
       <Route path="/customer-home" element={<CustomerHome />} />
       <Route path="/worker-page" element={<SearchWorkers/>} />
-      <Route path="/worker-profile" element={<WorkerProfile />} />
+      <Route path="/worker-profile/:id" element={<WorkerProfile />} />
     </Routes>
   );
 }

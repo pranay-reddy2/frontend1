@@ -30,38 +30,122 @@ export default function SignIn() {
   const [otp, setOtp] = useState("");
 
   const navigate = useNavigate();
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError(null);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setError(null);
+  if (!mobileNumber) {
+    setError("Please enter your email/mobile");
+    return;
+  }
 
-    if (!/^\+?[0-9]{10,13}$/.test(mobileNumber.replace(/\s/g, ""))) {
-      setError("Please enter a valid mobile number.");
-      return;
+  setIsLoading(true);
+
+  try {
+    const response = await fetch("http://localhost:8080/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: mobileNumber, // Backend expects 'email' field
+        password: mobileNumber, // For workers, we used mobile as password
+        deviceInfo: navigator.userAgent
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Login failed");
     }
 
-    setIsLoading(true);
+    console.log("Login successful:", data);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      setShowOTP(true);
-      console.log("OTP sent!");
-    }, 2000);
-  };
-
-  const verifyOTP = () => {
-    if (otp.length !== 6) {
-      setError("Invalid OTP! Enter 6 digits");
-      return;
+    // ✅ STORE THE TOKEN
+    if (data.access) {
+      localStorage.setItem("token", data.access);
+      localStorage.setItem("userId", data.user.id);
+      localStorage.setItem("userRole", data.user.role);
     }
-    console.log("OTP Verified!");
-    // After OTP verification
-    if (userType === "worker") {
-      navigate("/worker-profile");
+
+    setIsLoading(false);
+
+    // Navigate based on user role and profile completion
+    if (data.user.role === "worker") {
+      if (data.user.workerProfile) {
+        // Worker has profile - go to profile page
+        navigate(`/worker-profile/${data.user.workerProfile}`);
+      } else {
+        // Worker needs to complete profile
+        navigate("/worker-home");
+      }
     } else {
       navigate("/customer-home");
-    } // ✅ Redirect after login success
-  };
+    }
+    
+  } catch (err) {
+    console.error("Login error:", err);
+    setError(err.message || "Failed to login. Please check your credentials.");
+    setIsLoading(false);
+  }
+};
+
+// Remove OTP code entirely
+
+const verifyOTP = async () => {
+  if (otp.length !== 6) {
+    setError("Invalid OTP! Enter 6 digits");
+    return;
+  }
+
+  setIsLoading(true);
+
+  try {
+    const response = await fetch("http://localhost:8080/api/auth/verify-otp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        otp: otp,
+        mobileNumber: mobileNumber,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "OTP verification failed");
+    }
+
+    // ✅ STORE THE TOKEN HERE
+    if (data.token) {
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("userId", data.user._id);
+      localStorage.setItem("userRole", data.user.role);
+    }
+
+    setIsLoading(false);
+
+    // Navigate based on user type
+    if (userType === "worker") {
+      // Check if worker has completed profile
+      if (data.user.workerProfile) {
+        navigate(`/worker-profile/${data.user.workerProfile}`);
+      } else {
+        navigate("/worker-home"); // Complete profile first
+      }
+    } else {
+      navigate("/customer-home");
+    }
+    
+  } catch (err) {
+    console.error("OTP verification error:", err);
+    setError(err.message || "Invalid OTP.");
+    setIsLoading(false);
+  }
+};
 
   const getTabClass = (type) =>
     `flex-1 py-3 text-center rounded-lg cursor-pointer transition-all duration-300 ease-in-out ${
