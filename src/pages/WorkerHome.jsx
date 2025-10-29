@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { useNavigate } from "react-router-dom";
+import { API_ENDPOINTS, fetchWithAuth, getAuthToken } from "../config/api";
 
 export default function WorkerHome() {
   const [step, setStep] = useState(1);
@@ -15,8 +16,8 @@ export default function WorkerHome() {
   const timerRef = useRef(null);
   const navigate = useNavigate();
 
-  // Use environment variable for API key
-  const apiKey = "AIzaSyCimq7Mcl27O8Z96O8gqiPz-qRbw55H7N4";
+  // Get API key from environment variable
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
   const [formData, setFormData] = useState({
@@ -28,7 +29,18 @@ export default function WorkerHome() {
     aadhaarImage: null,
   });
 
-  const [previewUrls, setPreviewUrls] = useState({ profile: null, aadhaar: null });
+  const [previewUrls, setPreviewUrls] = useState({
+    profile: null,
+    aadhaar: null,
+  });
+
+  // Check authentication on mount
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token) {
+      navigate("/");
+    }
+  }, [navigate]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -37,7 +49,7 @@ export default function WorkerHome() {
       if (previewUrls.profile) URL.revokeObjectURL(previewUrls.profile);
       if (previewUrls.aadhaar) URL.revokeObjectURL(previewUrls.aadhaar);
     };
-  }, []);
+  }, [previewUrls.profile, previewUrls.aadhaar]);
 
   const handleChange = (e) => {
     setFormData((s) => ({ ...s, [e.target.name]: e.target.value }));
@@ -53,7 +65,6 @@ export default function WorkerHome() {
       return;
     }
 
-    // Revoke old URL to prevent memory leak
     if (previewUrls[type]) {
       URL.revokeObjectURL(previewUrls[type]);
     }
@@ -67,16 +78,17 @@ export default function WorkerHome() {
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      // Use webm format for better compatibility
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/mp4";
       mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
-      
+
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: mimeType });
         setFormData((s) => ({ ...s, voiceBlob: blob }));
@@ -87,7 +99,10 @@ export default function WorkerHome() {
       setIsRecording(true);
       setRecordingTime(0);
 
-      timerRef.current = setInterval(() => setRecordingTime((prev) => prev + 1), 1000);
+      timerRef.current = setInterval(
+        () => setRecordingTime((prev) => prev + 1),
+        1000
+      );
     } catch (err) {
       console.error("Recording error:", err);
       setError("Microphone access denied or unavailable.");
@@ -96,7 +111,10 @@ export default function WorkerHome() {
 
   const stopRecording = () => {
     try {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state !== "inactive"
+      ) {
         mediaRecorderRef.current.stop();
       }
     } catch (e) {
@@ -160,14 +178,14 @@ export default function WorkerHome() {
           {
             role: "user",
             parts: [
-              { 
-                inlineData: { 
-                  mimeType: audioBlob.type || "audio/webm", 
-                  data: base64Audio 
-                } 
+              {
+                inlineData: {
+                  mimeType: audioBlob.type || "audio/webm",
+                  data: base64Audio,
+                },
               },
               {
-                text: "This audio file is in a local Indian language (Telugu, Hindi, Kannada, Odia, Bengali, Tamil, Urdu, or English). Identify the language and transcribe it into clear English text. Extract the person's work experience and skills."
+                text: "This audio file is in a local Indian language (Telugu, Hindi, Kannada, Odia, Bengali, Tamil, Urdu, or English). Identify the language and transcribe it into clear English text. Extract the person's work experience and skills.",
               },
             ],
           },
@@ -186,72 +204,71 @@ export default function WorkerHome() {
       return "Unable to transcribe audio. Please try text input instead.";
     }
   };
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (!validateStep2()) return;
-  setIsLoading(true);
-  setError(null);
 
-  try {
-    // Check authentication first
-    const authToken = localStorage.getItem("token");
-    if (!authToken) {
-      setError("Authentication required. Please sign in again.");
-      navigate("/signin");
-      return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateStep2()) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const authToken = getAuthToken();
+      if (!authToken) {
+        setError("Authentication required. Please sign in again.");
+        navigate("/");
+        return;
+      }
+
+      let textDesc = "";
+
+      if (inputMethod === "voice") {
+        textDesc = await convertSpeechToText(formData.voiceBlob);
+      } else {
+        textDesc = `Experience: ${formData.experience.trim()}. Skills: ${formData.skills.trim()}`;
+      }
+
+      const data = new FormData();
+      data.append("text", textDesc);
+      data.append("aadhaarNumber", formData.aadhaarNumber.trim());
+      data.append("photo", formData.profileImage);
+      if (formData.aadhaarImage) {
+        data.append("aadhaar", formData.aadhaarImage);
+      }
+
+      const resp = await fetchWithAuth(API_ENDPOINTS.WORKER.GENERATE_CARD, {
+        method: "POST",
+        body: data,
+      });
+
+      if (!resp.ok) {
+        const errorData = await resp.json();
+        throw new Error(
+          errorData.error || errorData.message || "Failed to save profile"
+        );
+      }
+
+      const json = await resp.json();
+      console.log("Profile created:", json);
+
+      alert("Profile saved successfully!");
+
+      if (json.worker && json.worker._id) {
+        navigate(`/worker-profile/${json.worker._id}`);
+      } else {
+        console.error("Worker ID not returned:", json);
+        setError("Profile created but ID missing. Please refresh.");
+      }
+    } catch (err) {
+      console.error("Submit error:", err);
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    let textDesc = "";
-    
-    if (inputMethod === "voice") {
-      textDesc = await convertSpeechToText(formData.voiceBlob);
-    } else {
-      textDesc = `Experience: ${formData.experience.trim()}. Skills: ${formData.skills.trim()}`;
-    }
-
-    const data = new FormData();
-    data.append("text", textDesc);
-    data.append("aadhaarNumber", formData.aadhaarNumber.trim());
-    data.append("photo", formData.profileImage);
-    if (formData.aadhaarImage) {
-      data.append("aadhaar", formData.aadhaarImage);
-    }
-
-    const resp = await fetch("http://localhost:8080/api/worker/generate-card", { 
-      method: "POST", 
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: data 
-    });
-
-    if (!resp.ok) {
-      const errorData = await resp.json();
-      throw new Error(errorData.error || errorData.message || "Failed to save profile");
-    }
-
-    const json = await resp.json();
-    console.log("Profile created:", json);
-
-    setIsLoading(false);
-    alert("Profile saved successfully!");
-
-    // ✅ FIX: Check if worker._id exists before navigating
-    if (json.worker && json.worker._id) {
-      navigate(`/worker-profile/${json.worker._id}`);
-    } else {
-      console.error("Worker ID not returned:", json);
-      setError("Profile created but ID missing. Please refresh.");
-    }
-
-  } catch (err) {
-    console.error("Submit error:", err);
-    setError(err.message || "Something went wrong. Please try again.");
-    setIsLoading(false);
-  }
-};
-
-  const formatTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  const formatTime = (s) =>
+    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -264,11 +281,16 @@ const handleSubmit = async (e) => {
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/30">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <path d="M12 2L15 8H9L12 2Z" fill="currentColor" />
-                    <path d="M3 20H21V18C21 14 17 12 12 12C7 12 3 14 3 18V20Z" fill="currentColor" />
+                    <path
+                      d="M3 20H21V18C21 14 17 12 12 12C7 12 3 14 3 18V20Z"
+                      fill="currentColor"
+                    />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Quick Intro</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Quick Intro
+                  </h3>
                   <p className="text-sm text-gray-500">Finish in 2 minutes</p>
                 </div>
               </div>
@@ -279,8 +301,12 @@ const handleSubmit = async (e) => {
                     1
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-800">Tell about your work</h4>
-                    <p className="text-xs text-gray-500">Text or record intro</p>
+                    <h4 className="text-sm font-semibold text-gray-800">
+                      Tell about your work
+                    </h4>
+                    <p className="text-xs text-gray-500">
+                      Text or record intro
+                    </p>
                   </div>
                 </li>
 
@@ -289,8 +315,12 @@ const handleSubmit = async (e) => {
                     2
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-800">Add identity & photo</h4>
-                    <p className="text-xs text-gray-500">Upload photo and Aadhaar</p>
+                    <h4 className="text-sm font-semibold text-gray-800">
+                      Add identity & photo
+                    </h4>
+                    <p className="text-xs text-gray-500">
+                      Upload photo and Aadhaar
+                    </p>
                   </div>
                 </li>
               </ol>
@@ -298,7 +328,8 @@ const handleSubmit = async (e) => {
               <div className="mt-6 text-sm text-gray-600">
                 <p className="mb-2 font-medium">Security</p>
                 <div className="text-xs bg-blue-50/70 border border-blue-200/50 rounded-md p-3">
-                  We never share Aadhaar publicly — used only to verify identity.
+                  We never share Aadhaar publicly — used only to verify
+                  identity.
                 </div>
               </div>
             </div>
@@ -357,8 +388,16 @@ const handleSubmit = async (e) => {
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
                         >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                            <path d="M4 6H20V8H4zM4 10H20V12H4zM4 14H14V16H4z" fill="currentColor" />
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                          >
+                            <path
+                              d="M4 6H20V8H4zM4 10H20V12H4zM4 14H14V16H4z"
+                              fill="currentColor"
+                            />
                           </svg>
                           Text
                         </button>
@@ -372,9 +411,20 @@ const handleSubmit = async (e) => {
                               : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                           }`}
                         >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                            <path d="M12 1C13.1 1 14 1.9 14 3V11C14 12.1 13.1 13 12 13C10.9 13 10 12.1 10 11V3C10 1.9 10.9 1 12 1Z" fill="currentColor"/>
-                            <path d="M19 11C19 14.31 16.31 17 13 17H11C7.69 17 5 14.31 5 11H7C7 13.21 8.79 15 11 15H13C15.21 15 17 13.21 17 11H19Z" fill="currentColor"/>
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                          >
+                            <path
+                              d="M12 1C13.1 1 14 1.9 14 3V11C14 12.1 13.1 13 12 13C10.9 13 10 12.1 10 11V3C10 1.9 10.9 1 12 1Z"
+                              fill="currentColor"
+                            />
+                            <path
+                              d="M19 11C19 14.31 16.31 17 13 17H11C7.69 17 5 14.31 5 11H7C7 13.21 8.79 15 11 15H13C15.21 15 17 13.21 17 11H19Z"
+                              fill="currentColor"
+                            />
                           </svg>
                           Voice
                         </button>
@@ -384,7 +434,9 @@ const handleSubmit = async (e) => {
                       {inputMethod === "text" && (
                         <div className="mt-4 space-y-3">
                           <div>
-                            <label className="text-xs text-gray-500">Experience</label>
+                            <label className="text-xs text-gray-500">
+                              Experience
+                            </label>
                             <textarea
                               name="experience"
                               value={formData.experience}
@@ -396,7 +448,9 @@ const handleSubmit = async (e) => {
                           </div>
 
                           <div>
-                            <label className="text-xs text-gray-500">Skills (comma separated)</label>
+                            <label className="text-xs text-gray-500">
+                              Skills (comma separated)
+                            </label>
                             <input
                               name="skills"
                               value={formData.skills}
@@ -414,10 +468,16 @@ const handleSubmit = async (e) => {
                           <div className="inline-flex items-center gap-4 rounded-xl border border-gray-200 px-5 py-4 bg-white shadow-md">
                             <div className="text-left">
                               <div className="text-sm font-medium text-gray-800">
-                                {isRecording ? "Recording…" : formData.voiceBlob ? "Recorded" : "Not recorded"}
+                                {isRecording
+                                  ? "Recording…"
+                                  : formData.voiceBlob
+                                  ? "Recorded"
+                                  : "Not recorded"}
                               </div>
                               <div className="text-xs text-gray-500 mt-1">
-                                {isRecording ? `Live — ${formatTime(recordingTime)}` : "Max 90 seconds"}
+                                {isRecording
+                                  ? `Live — ${formatTime(recordingTime)}`
+                                  : "Max 90 seconds"}
                               </div>
                             </div>
 
@@ -428,7 +488,9 @@ const handleSubmit = async (e) => {
                                   onClick={stopRecording}
                                   className="px-4 py-2 rounded-lg bg-white border border-rose-300 shadow-sm hover:bg-rose-50 transition-all duration-200"
                                 >
-                                  <span className="text-rose-600 font-semibold">⏹ Stop</span>
+                                  <span className="text-rose-600 font-semibold">
+                                    ⏹ Stop
+                                  </span>
                                 </button>
                               ) : (
                                 <button
@@ -444,7 +506,11 @@ const handleSubmit = async (e) => {
 
                           {formData.voiceBlob && (
                             <div className="mt-4">
-                              <audio controls src={URL.createObjectURL(formData.voiceBlob)} className="w-full" />
+                              <audio
+                                controls
+                                src={URL.createObjectURL(formData.voiceBlob)}
+                                className="w-full"
+                              />
                             </div>
                           )}
                         </div>
@@ -461,8 +527,19 @@ const handleSubmit = async (e) => {
                         className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-3 rounded-xl font-semibold shadow-lg shadow-blue-500/30 hover:bg-blue-700 transform hover:-translate-y-0.5 transition-all duration-300"
                       >
                         Next
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                          <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <path
+                            d="M5 12H19M19 12L12 5M19 12L12 19"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
                         </svg>
                       </button>
                     </div>
@@ -474,7 +551,9 @@ const handleSubmit = async (e) => {
                   <>
                     <div className="rounded-xl border border-gray-200 p-4 bg-white shadow-sm space-y-4">
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Identity & Photo</label>
+                        <label className="text-sm font-medium text-gray-700">
+                          Identity & Photo
+                        </label>
                         <input
                           name="aadhaarNumber"
                           value={formData.aadhaarNumber}
@@ -487,13 +566,28 @@ const handleSubmit = async (e) => {
                       </div>
 
                       <div>
-                        <label className="text-xs text-gray-500 block mb-2">Profile Photo *</label>
+                        <label className="text-xs text-gray-500 block mb-2">
+                          Profile Photo *
+                        </label>
                         <div className="flex items-center gap-3">
                           <label className="cursor-pointer inline-flex items-center gap-3 px-4 py-2 bg-gray-50 border border-dashed border-gray-300 rounded-xl hover:bg-gray-100 hover:border-gray-400 transition-all duration-200">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                              <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <svg
+                              width="20"
+                              height="20"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                            >
+                              <path
+                                d="M12 5V19M5 12H19"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
                             </svg>
-                            <span className="text-sm text-gray-700">Upload</span>
+                            <span className="text-sm text-gray-700">
+                              Upload
+                            </span>
                             <input
                               type="file"
                               accept="image/*"
@@ -504,7 +598,11 @@ const handleSubmit = async (e) => {
 
                           {previewUrls.profile ? (
                             <div className="w-24 h-24 rounded-xl overflow-hidden shadow-sm border border-gray-200">
-                              <img src={previewUrls.profile} alt="profile" className="w-full h-full object-cover" />
+                              <img
+                                src={previewUrls.profile}
+                                alt="profile"
+                                className="w-full h-full object-cover"
+                              />
                             </div>
                           ) : (
                             <div className="w-24 h-24 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-xs text-gray-500">
@@ -515,13 +613,28 @@ const handleSubmit = async (e) => {
                       </div>
 
                       <div>
-                        <label className="text-xs text-gray-500 block mb-2">Aadhaar Photo (Optional)</label>
+                        <label className="text-xs text-gray-500 block mb-2">
+                          Aadhaar Photo (Optional)
+                        </label>
                         <div className="flex items-center gap-3">
                           <label className="cursor-pointer inline-flex items-center gap-3 px-4 py-2 bg-gray-50 border border-dashed border-gray-300 rounded-xl hover:bg-gray-100 hover:border-gray-400 transition-all duration-200">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                              <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <svg
+                              width="20"
+                              height="20"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                            >
+                              <path
+                                d="M12 5V19M5 12H19"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
                             </svg>
-                            <span className="text-sm text-gray-700">Upload</span>
+                            <span className="text-sm text-gray-700">
+                              Upload
+                            </span>
                             <input
                               type="file"
                               accept="image/*"
@@ -532,7 +645,11 @@ const handleSubmit = async (e) => {
 
                           {previewUrls.aadhaar ? (
                             <div className="w-24 h-24 rounded-xl overflow-hidden shadow-sm border border-gray-200">
-                              <img src={previewUrls.aadhaar} alt="aadhaar" className="w-full h-full object-cover" />
+                              <img
+                                src={previewUrls.aadhaar}
+                                alt="aadhaar"
+                                className="w-full h-full object-cover"
+                              />
                             </div>
                           ) : (
                             <div className="w-24 h-24 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-xs text-gray-500">
@@ -556,8 +673,8 @@ const handleSubmit = async (e) => {
                         type="submit"
                         disabled={isLoading}
                         className={`flex-1 py-3 rounded-xl text-white font-semibold shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 ${
-                          isLoading 
-                            ? "bg-gray-400 cursor-wait" 
+                          isLoading
+                            ? "bg-gray-400 cursor-wait"
                             : "bg-green-600 shadow-green-500/30 hover:bg-green-700"
                         }`}
                       >

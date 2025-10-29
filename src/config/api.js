@@ -1,11 +1,8 @@
 // frontend/src/config/api.js
-// API Configuration for connecting frontend to backend
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
-
-// API endpoints configuration
 export const API_ENDPOINTS = {
-  // Authentication
   AUTH: {
     REGISTER: `${API_BASE_URL}/auth/register`,
     LOGIN: `${API_BASE_URL}/auth/login`,
@@ -15,8 +12,7 @@ export const API_ENDPOINTS = {
     SESSIONS: `${API_BASE_URL}/auth/sessions`,
     REVOKE_SESSION: (sessionId) => `${API_BASE_URL}/auth/sessions/${sessionId}`,
   },
-  
-  // Worker
+
   WORKER: {
     GET_ALL: `${API_BASE_URL}/worker`,
     GET_ONE: (id) => `${API_BASE_URL}/worker/${id}`,
@@ -27,50 +23,56 @@ export const API_ENDPOINTS = {
     ENDORSEMENT: (id) => `${API_BASE_URL}/worker/${id}/endorsement`,
     HISTORY: (id) => `${API_BASE_URL}/worker/${id}/history`,
   },
-  
-  // Customer
+
   CUSTOMER: {
     SAVE_PROFILE: `${API_BASE_URL}/customer/save`,
   },
 };
 
+// Helper function to get auth token
+export const getAuthToken = () => {
+  return localStorage.getItem("token");
+};
+
 // Helper function to make authenticated requests
 export const fetchWithAuth = async (url, options = {}) => {
-  // Get access token from localStorage
-  const accessToken = localStorage.getItem('accessToken');
-  
+  const token = getAuthToken();
+
   const headers = {
-    'Content-Type': 'application/json',
     ...options.headers,
   };
-  
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
+
+  // Only add Content-Type if not FormData
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
   }
-  
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const response = await fetch(url, {
     ...options,
     headers,
-    credentials: 'include', // Important for cookies
+    credentials: "include",
   });
-  
+
   // Handle token expiration
   if (response.status === 401) {
-    const data = await response.json();
-    if (data.code === 'TOKEN_EXPIRED') {
-      // Try to refresh token
+    const data = await response.json().catch(() => ({}));
+    if (data.code === "TOKEN_EXPIRED") {
       const refreshed = await refreshAccessToken();
       if (refreshed) {
-        // Retry original request
+        // Retry original request with new token
         return fetchWithAuth(url, options);
       } else {
-        // Redirect to login
-        window.location.href = '/';
-        return null;
+        clearAuthData();
+        window.location.href = "/";
+        throw new Error("Session expired. Please login again.");
       }
     }
   }
-  
+
   return response;
 };
 
@@ -78,39 +80,44 @@ export const fetchWithAuth = async (url, options = {}) => {
 export const refreshAccessToken = async () => {
   try {
     const response = await fetch(API_ENDPOINTS.AUTH.REFRESH, {
-      method: 'POST',
-      credentials: 'include',
+      method: "POST",
+      credentials: "include",
     });
-    
+
     if (response.ok) {
       const data = await response.json();
-      localStorage.setItem('accessToken', data.access);
-      return true;
+      if (data.access) {
+        localStorage.setItem("token", data.access);
+        return true;
+      }
     }
     return false;
   } catch (error) {
-    console.error('Token refresh failed:', error);
+    console.error("Token refresh failed:", error);
     return false;
   }
 };
 
 // Function to save user data to localStorage
 export const saveAuthData = (accessToken, user) => {
-  localStorage.setItem('accessToken', accessToken);
-  localStorage.setItem('user', JSON.stringify(user));
+  localStorage.setItem("token", accessToken);
+  localStorage.setItem("userId", user.id);
+  localStorage.setItem("userRole", user.role);
+  localStorage.setItem("user", JSON.stringify(user));
 };
 
 // Function to get user data from localStorage
 export const getUserData = () => {
-  const userStr = localStorage.getItem('user');
+  const userStr = localStorage.getItem("user");
   return userStr ? JSON.parse(userStr) : null;
 };
 
 // Function to clear auth data
 export const clearAuthData = () => {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('user');
+  localStorage.removeItem("token");
+  localStorage.removeItem("userId");
+  localStorage.removeItem("userRole");
+  localStorage.removeItem("user");
 };
 
-// Export API_BASE_URL as default
 export default API_BASE_URL;
