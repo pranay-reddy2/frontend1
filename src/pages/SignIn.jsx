@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import backgroundImage from "../assets/background.jpg";
 
@@ -23,17 +23,34 @@ function WrenchIcon() {
 
 export default function SignIn() {
   const [userType, setUserType] = useState("worker");
+  const [loginMethod, setLoginMethod] = useState("mobile");
+
+  // Automatically set login method based on user type
+  useEffect(() => {
+    if (userType === "worker") {
+      setLoginMethod("mobile");
+    } else {
+      setLoginMethod("email");
+    }
+    setIsOtpSent(false);
+    setError("");
+  }, [userType]);
+
+  // Mobile login states
   const [mobile, setMobile] = useState("");
   const [otp, setOtp] = useState("");
   const [isOtpSent, setIsOtpSent] = useState(false);
+
+  // Email login states
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
   const navigate = useNavigate();
-
   const HARD_CODED_OTP = "123456";
 
-  // Simulate OTP sending (no real SMS)
   const handleSendOtp = (e) => {
     e.preventDefault();
     setError("");
@@ -42,7 +59,6 @@ export default function SignIn() {
       return setError("Please enter a valid 10-digit mobile number");
     }
 
-    // Simulate OTP sent
     console.log("📱 Sending OTP to:", mobile);
     setIsOtpSent(true);
     alert(`OTP sent to ${mobile} (use ${HARD_CODED_OTP} for testing)`);
@@ -54,40 +70,57 @@ export default function SignIn() {
     setIsLoading(true);
 
     try {
-      if (otp !== HARD_CODED_OTP) {
-        throw new Error("Invalid OTP. Try again.");
-      }
+      if (otp !== HARD_CODED_OTP) throw new Error("Invalid OTP. Try again.");
 
-      // Simulated backend login (or use fetch if backend ready)
       const response = await fetch("http://localhost:8080/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          mobile,
-          otp,
-          role: userType,
-        }),
+        body: JSON.stringify({ mobile, otp, role: userType }),
       });
 
       const data = await response.json();
-      console.log("Response data:", data);
+      if (!response.ok) throw new Error(data.error || "Login failed");
 
-      if (!response.ok) {
-        throw new Error(data.error || "Login failed");
-      }
-
-      localStorage.setItem("accessToken", data.access);
+      localStorage.setItem("token", data.access);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      if (data.user.role === "worker") {
-        navigate("/worker-profile/:id");
-      } else {
-        navigate("/worker-page");
-      }
+      navigate("/worker-profile/:id");
     } catch (err) {
-      console.error("Login error:", err);
-      setError(err.message || "Failed to verify OTP");
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailLogin = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (!email || !password)
+      return setError("Please enter both email and password");
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(
+        "http://localhost:8080/api/auth/email-login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email: email.toLowerCase(), password }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Login failed");
+
+      localStorage.setItem("token", data.access);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      navigate("/worker-page");
+    } catch (err) {
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -120,6 +153,7 @@ export default function SignIn() {
           </p>
         </div>
 
+        {/* User Type Selection */}
         <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6">
           <button
             className={getTabClass("worker")}
@@ -135,92 +169,108 @@ export default function SignIn() {
           </button>
         </div>
 
-        {!isOtpSent ? (
-          <form onSubmit={handleSendOtp}>
+        {/* Worker → Mobile OTP Login */}
+        {loginMethod === "mobile" && (
+          <>
+            {!isOtpSent ? (
+              <form onSubmit={handleSendOtp}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Mobile Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={mobile}
+                    onChange={(e) => setMobile(e.target.value)}
+                    className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter 10-digit mobile number"
+                    required
+                  />
+                </div>
+                {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+                <button className="w-full bg-blue-600 text-white py-3 rounded-lg">
+                  Send OTP
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Enter OTP
+                  </label>
+                  <input
+                    type="text"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter OTP"
+                    required
+                  />
+                </div>
+                {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg"
+                >
+                  {isLoading ? "Verifying..." : "Verify OTP"}
+                </button>
+              </form>
+            )}
+          </>
+        )}
+
+        {/* Customer → Email/Password Login */}
+        {loginMethod === "email" && (
+          <form onSubmit={handleEmailLogin}>
             <div className="mb-4">
-              <label
-                htmlFor="mobile"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Mobile Number
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email Address
               </label>
               <input
-                type="tel"
-                id="mobile"
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
-                className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter 10-digit mobile number"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="your.email@example.com"
                 required
-                pattern="[0-9]{10}"
               />
             </div>
-
-            {error && (
-              <div className="bg-red-100 text-red-700 border border-red-300 rounded-lg py-2 px-4 mb-4 text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold text-lg hover:bg-blue-700"
-            >
-              Send OTP
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleVerifyOtp}>
             <div className="mb-4">
-              <label
-                htmlFor="otp"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Enter OTP
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Password
               </label>
               <input
-                type="text"
-                id="otp"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter OTP (123456)"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter your password"
                 required
               />
             </div>
-
-            {error && (
-              <div className="bg-red-100 text-red-700 border border-red-300 rounded-lg py-2 px-4 mb-4 text-sm">
-                {error}
-              </div>
-            )}
-
+            {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full text-white py-3 rounded-lg font-semibold text-lg transition-colors ${
-                isLoading
-                  ? "bg-blue-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
+              className="w-full bg-blue-600 text-white py-3 rounded-lg"
             >
-              {isLoading ? "Verifying..." : "Verify OTP"}
+              {isLoading ? "Signing in..." : "Sign In"}
             </button>
-
-            <div className="text-center mt-4">
-              <button
-                onClick={() => {
-                  setIsOtpSent(false);
-                  setOtp("");
-                }}
-                type="button"
-                className="text-sm text-blue-600 hover:underline"
-              >
-                Change mobile number
-              </button>
-            </div>
           </form>
         )}
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600">
+            Don't have an account?{" "}
+            <button
+              onClick={() => navigate("/signup")}
+              className="text-blue-600 font-semibold hover:underline"
+            >
+              Sign Up
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );
