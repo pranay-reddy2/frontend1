@@ -21,136 +21,142 @@ export default function SignUp() {
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
-const handleSubmit = async (e) => {
-  e.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-  if (userType === "user" && (!formData.email || !formData.password)) {
-    setError("Email & Password required for Customers!");
-    return;
-  }
+    if (userType === "user" && (!formData.email || !formData.password)) {
+      setError("Email & Password required for Customers!");
+      return;
+    }
 
-  if (userType === "worker" && (!formData.fullName || !formData.profession)) {
-    setError("Full Name & Profession required for Workers!");
-    return;
-  }
+    if (userType === "worker" && (!formData.fullName || !formData.profession)) {
+      setError("Full Name & Profession required for Workers!");
+      return;
+    }
 
-  setError(null);
-  setIsLoading(true);
+    setError(null);
+    setIsLoading(true);
 
-  try {
-    // Different endpoints for worker vs customer
-    const endpoint = userType === "worker" 
-      ? "http://localhost:8080/api/auth/register" 
-      : "http://localhost:8080/api/auth/register";
+    try {
+      // Different endpoints for worker vs customer
+      const endpoint =
+        userType === "worker"
+          ? "http://localhost:8080/api/auth/register"
+          : "http://localhost:8080/api/auth/register";
 
-    const payload = userType === "worker" 
-      ? {
-          email: formData.email || `${formData.mobileNumber}@temp.com`, // Generate temp email for workers
-          password: formData.mobileNumber, // Use mobile as password temporarily
-          fullName: formData.fullName,
-          profession: formData.profession,
-          role: "worker"
+      const payload =
+        userType === "worker"
+          ? {
+              email: formData.email || `${formData.mobileNumber}@temp.com`, // Generate temp email for workers
+              password: formData.mobileNumber, // Use mobile as password temporarily
+              fullName: formData.fullName,
+              profession: formData.profession,
+              role: "worker",
+            }
+          : {
+              email: formData.email,
+              password: formData.password,
+              role: "user",
+            };
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Signup failed");
+      }
+
+      console.log("Signup successful:", data);
+
+      // ✅ CRITICAL: Store token BEFORE navigation
+      if (data.access) {
+        localStorage.setItem("token", data.access);
+      }
+      if (data.user) {
+        localStorage.setItem("userId", data.user.id);
+        localStorage.setItem("userRole", data.user.role);
+        localStorage.setItem("user", JSON.stringify(data.user));
+      }
+
+      // ✅ Small delay to ensure localStorage is written
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      setIsLoading(false);
+
+      // Navigate based on user type
+      if (userType === "worker") {
+        // Worker needs to complete profile
+        navigate("/worker-home");
+      } else {
+        navigate("/customer-home");
+      }
+    } catch (err) {
+      console.error("Signup error:", err);
+      setError(err.message || "Failed to signup. Please try again.");
+      setIsLoading(false);
+    }
+  };
+
+  // Remove OTP verification - not needed with email/password
+
+  const verifyOTP = async () => {
+    if (otp.length !== 6) {
+      setError("Please enter a valid 6-digit OTP");
+      return;
+    }
+
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(
+        "http://localhost:8080/api/auth/verify-otp",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            otp: otp,
+            mobileNumber: formData.mobileNumber,
+          }),
         }
-      : {
-          email: formData.email,
-          password: formData.password,
-          role: "user"
-        };
+      );
 
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+      const data = await response.json();
 
-    const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "OTP verification failed");
+      }
 
-    if (!response.ok) {
-      throw new Error(data.error || "Signup failed");
+      // ✅ STORE THE TOKEN HERE
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("userId", data.user._id);
+        localStorage.setItem("userRole", data.user.role);
+      }
+
+      setIsLoading(false);
+
+      // Navigate based on user type
+      if (userType === "worker") {
+        navigate("/worker-home");
+      } else {
+        navigate("/customer-home");
+      }
+    } catch (err) {
+      console.error("OTP verification error:", err);
+      setError(err.message || "Invalid OTP. Please try again.");
+      setIsLoading(false);
     }
-
-    console.log("Signup successful:", data);
-    
-    // Store user info and token
-    if (data.user) {
-      localStorage.setItem("userId", data.user.id);
-      localStorage.setItem("userRole", data.user.role);
-    }
-    if (data.access) {
-      localStorage.setItem("token", data.access);
-    }
-
-    // Auto-login after signup
-    setIsLoading(false);
-    
-    // Navigate based on user type
-    if (userType === "worker") {
-      // Worker needs to complete profile
-      navigate("/worker-home");
-    } else {
-      navigate("/customer-home");
-    }
-    
-  } catch (err) {
-    console.error("Signup error:", err);
-    setError(err.message || "Failed to signup. Please try again.");
-    setIsLoading(false);
-  }
-};
-
-// Remove OTP verification - not needed with email/password
-
-const verifyOTP = async () => {
-  if (otp.length !== 6) {
-    setError("Please enter a valid 6-digit OTP");
-    return;
-  }
-
-  setError(null);
-  setIsLoading(true);
-
-  try {
-    const response = await fetch("http://localhost:8080/api/auth/verify-otp", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        otp: otp,
-        mobileNumber: formData.mobileNumber,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "OTP verification failed");
-    }
-
-    // ✅ STORE THE TOKEN HERE
-    if (data.token) {
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("userId", data.user._id);
-      localStorage.setItem("userRole", data.user.role);
-    }
-
-    setIsLoading(false);
-
-    // Navigate based on user type
-    if (userType === "worker") {
-      navigate("/worker-home");
-    } else {
-      navigate("/customer-home");
-    }
-    
-  } catch (err) {
-    console.error("OTP verification error:", err);
-    setError(err.message || "Invalid OTP. Please try again.");
-    setIsLoading(false);
-  }
-};
+  };
   const tabClass = (type) =>
     `flex-1 py-2 rounded-lg text-center cursor-pointer transition ${
       userType === type

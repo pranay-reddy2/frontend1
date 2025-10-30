@@ -207,12 +207,15 @@ export default function WorkerHome() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Validate before submission
     if (!validateStep2()) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
+      // 🔐 Check authentication
       const authToken = getAuthToken();
       if (!authToken) {
         setError("Authentication required. Please sign in again.");
@@ -220,14 +223,15 @@ export default function WorkerHome() {
         return;
       }
 
+      // 🎙️ Prepare text description (voice or manual input)
       let textDesc = "";
-
       if (inputMethod === "voice") {
         textDesc = await convertSpeechToText(formData.voiceBlob);
       } else {
         textDesc = `Experience: ${formData.experience.trim()}. Skills: ${formData.skills.trim()}`;
       }
 
+      // 🧾 Build form data
       const data = new FormData();
       data.append("text", textDesc);
       data.append("aadhaarNumber", formData.aadhaarNumber.trim());
@@ -236,23 +240,24 @@ export default function WorkerHome() {
         data.append("aadhaar", formData.aadhaarImage);
       }
 
+      // 🚀 Send POST request
       const resp = await fetchWithAuth(API_ENDPOINTS.WORKER.GENERATE_CARD, {
         method: "POST",
         body: data,
       });
 
+      // 🧩 Parse the response body ONCE
+      const json = await resp.json();
+
+      // ❌ Handle server errors
       if (!resp.ok) {
-        const errorData = await resp.json();
-        throw new Error(
-          errorData.error || errorData.message || "Failed to save profile"
-        );
+        throw new Error(json.error || json.message || "Failed to save profile");
       }
 
-      const json = await resp.json();
       console.log("Profile created:", json);
-
       alert("Profile saved successfully!");
 
+      // ✅ Navigate to worker profile if ID exists
       if (json.worker && json.worker._id) {
         navigate(`/worker-profile/${json.worker._id}`);
       } else {
