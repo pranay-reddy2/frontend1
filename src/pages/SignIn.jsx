@@ -23,129 +23,75 @@ function WrenchIcon() {
 
 export default function SignIn() {
   const [userType, setUserType] = useState("worker");
-  const [mobileNumber, setMobileNumber] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [showOTP, setShowOTP] = useState(false);
+  const [mobile, setMobile] = useState("");
   const [otp, setOtp] = useState("");
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const navigate = useNavigate();
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setError(null);
 
-  if (!mobileNumber) {
-    setError("Please enter your email/mobile");
-    return;
-  }
+  const HARD_CODED_OTP = "123456";
 
-  setIsLoading(true);
+  // Simulate OTP sending (no real SMS)
+  const handleSendOtp = (e) => {
+    e.preventDefault();
+    setError("");
 
-  try {
-    const response = await fetch("http://localhost:8080/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email: mobileNumber, // Backend expects 'email' field
-        password: mobileNumber, // For workers, we used mobile as password
-        deviceInfo: navigator.userAgent
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Login failed");
+    if (!/^[6-9]\d{9}$/.test(mobile)) {
+      return setError("Please enter a valid 10-digit mobile number");
     }
 
-    console.log("Login successful:", data);
+    // Simulate OTP sent
+    console.log("📱 Sending OTP to:", mobile);
+    setIsOtpSent(true);
+    alert(`OTP sent to ${mobile} (use ${HARD_CODED_OTP} for testing)`);
+  };
 
-    // ✅ STORE THE TOKEN
-    if (data.access) {
-      localStorage.setItem("token", data.access);
-      localStorage.setItem("userId", data.user.id);
-      localStorage.setItem("userRole", data.user.role);
-    }
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
 
-    setIsLoading(false);
-
-    // Navigate based on user role and profile completion
-    if (data.user.role === "worker") {
-      if (data.user.workerProfile) {
-        // Worker has profile - go to profile page
-        navigate(`/worker-profile/${data.user.workerProfile}`);
-      } else {
-        // Worker needs to complete profile
-        navigate("/worker-home");
+    try {
+      if (otp !== HARD_CODED_OTP) {
+        throw new Error("Invalid OTP. Try again.");
       }
-    } else {
-      navigate("/customer-home");
-    }
-    
-  } catch (err) {
-    console.error("Login error:", err);
-    setError(err.message || "Failed to login. Please check your credentials.");
-    setIsLoading(false);
-  }
-};
 
-// Remove OTP code entirely
+      // Simulated backend login (or use fetch if backend ready)
+      const response = await fetch("http://localhost:8080/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          mobile,
+          otp,
+          role: userType,
+        }),
+      });
 
-const verifyOTP = async () => {
-  if (otp.length !== 6) {
-    setError("Invalid OTP! Enter 6 digits");
-    return;
-  }
+      const data = await response.json();
+      console.log("Response data:", data);
 
-  setIsLoading(true);
-
-  try {
-    const response = await fetch("http://localhost:8080/api/auth/verify-otp", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        otp: otp,
-        mobileNumber: mobileNumber,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "OTP verification failed");
-    }
-
-    // ✅ STORE THE TOKEN HERE
-    if (data.token) {
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("userId", data.user._id);
-      localStorage.setItem("userRole", data.user.role);
-    }
-
-    setIsLoading(false);
-
-    // Navigate based on user type
-    if (userType === "worker") {
-      // Check if worker has completed profile
-      if (data.user.workerProfile) {
-        navigate(`/worker-profile/${data.user.workerProfile}`);
-      } else {
-        navigate("/worker-home"); // Complete profile first
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
       }
-    } else {
-      navigate("/customer-home");
+
+      localStorage.setItem("accessToken", data.access);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      if (data.user.role === "worker") {
+        navigate("/worker-dashboard");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError(err.message || "Failed to verify OTP");
+    } finally {
+      setIsLoading(false);
     }
-    
-  } catch (err) {
-    console.error("OTP verification error:", err);
-    setError(err.message || "Invalid OTP.");
-    setIsLoading(false);
-  }
-};
+  };
 
   const getTabClass = (type) =>
     `flex-1 py-3 text-center rounded-lg cursor-pointer transition-all duration-300 ease-in-out ${
@@ -174,24 +120,24 @@ const verifyOTP = async () => {
           </p>
         </div>
 
-        {!showOTP ? (
-          <>
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6">
-              <button
-                className={getTabClass("worker")}
-                onClick={() => setUserType("worker")}
-              >
-                Worker
-              </button>
-              <button
-                className={getTabClass("customer")}
-                onClick={() => setUserType("customer")}
-              >
-                Customer
-              </button>
-            </div>
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6">
+          <button
+            className={getTabClass("worker")}
+            onClick={() => setUserType("worker")}
+          >
+            Worker
+          </button>
+          <button
+            className={getTabClass("customer")}
+            onClick={() => setUserType("customer")}
+          >
+            Customer
+          </button>
+        </div>
 
-            <form onSubmit={handleSubmit}>
+        {!isOtpSent ? (
+          <form onSubmit={handleSendOtp}>
+            <div className="mb-4">
               <label
                 htmlFor="mobile"
                 className="block text-sm font-medium text-gray-700 mb-2"
@@ -201,77 +147,80 @@ const verifyOTP = async () => {
               <input
                 type="tel"
                 id="mobile"
-                value={mobileNumber}
-                onChange={(e) => setMobileNumber(e.target.value)}
-                className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="+91 9876543210"
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value)}
+                className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter 10-digit mobile number"
                 required
+                pattern="[0-9]{10}"
               />
-              <p className="text-xs text-gray-500 mt-1 ml-1">
-                Include country code (e.g., +91)
-              </p>
-
-              {error && (
-                <div className="bg-red-100 text-red-700 border border-red-300 rounded-lg py-2 px-4 mt-4 text-center">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className={`w-full mt-5 text-white py-3 rounded-lg font-semibold text-lg ${
-                  isLoading
-                    ? "bg-blue-400 cursor-not-allowed"
-                    : "bg-blue-600 hover:bg-blue-700"
-                }`}
-              >
-                {isLoading ? "Sending OTP..." : "Send OTP"}
-              </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <h3 className="text-xl font-semibold text-center mb-4">
-              Enter OTP
-            </h3>
-            <p className="text-gray-600 text-center mb-3">
-              OTP sent to {mobileNumber}
-            </p>
-
-            <input
-              type="text"
-              maxLength={6}
-              value={otp}
-              onChange={(e) => setOtp(e.target.value)}
-              className="w-full border p-3 rounded-lg text-center text-xl tracking-widest"
-              placeholder="123456"
-            />
+            </div>
 
             {error && (
-              <p className="text-red-500 text-sm text-center mt-3">{error}</p>
+              <div className="bg-red-100 text-red-700 border border-red-300 rounded-lg py-2 px-4 mb-4 text-sm">
+                {error}
+              </div>
             )}
 
             <button
-              onClick={verifyOTP}
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-semibold mt-5"
+              type="submit"
+              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold text-lg hover:bg-blue-700"
             >
-              Verify OTP
+              Send OTP
             </button>
-          </>
-        )}
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyOtp}>
+            <div className="mb-4">
+              <label
+                htmlFor="otp"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Enter OTP
+              </label>
+              <input
+                type="text"
+                id="otp"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value)}
+                className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Enter OTP (123456)"
+                required
+              />
+            </div>
 
-        <div className="flex justify-center mt-6">
-          <p className="text-sm text-gray-600">
-            Don't have an account?{" "}
-            <span
-              className="font-medium text-blue-600 hover:text-blue-500 cursor-pointer"
-              onClick={() => navigate("/signup")}
+            {error && (
+              <div className="bg-red-100 text-red-700 border border-red-300 rounded-lg py-2 px-4 mb-4 text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className={`w-full text-white py-3 rounded-lg font-semibold text-lg transition-colors ${
+                isLoading
+                  ? "bg-blue-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
             >
-              Sign up
-            </span>
-          </p>
-        </div>
+              {isLoading ? "Verifying..." : "Verify OTP"}
+            </button>
+
+            <div className="text-center mt-4">
+              <button
+                onClick={() => {
+                  setIsOtpSent(false);
+                  setOtp("");
+                }}
+                type="button"
+                className="text-sm text-blue-600 hover:underline"
+              >
+                Change mobile number
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
