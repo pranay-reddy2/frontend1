@@ -81,9 +81,9 @@ export default function SignIn() {
       localStorage.setItem("user", JSON.stringify(data.user));
 
       if (data.user.role === "worker") {
-        navigate("/worker-dashboard");
+        navigate("/worker-profile/:id");
       } else {
-        navigate("/dashboard");
+        navigate("/worker-page");
       }
     } catch (err) {
       console.error("Login error:", err);
