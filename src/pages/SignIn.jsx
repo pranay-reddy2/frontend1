@@ -1,3 +1,4 @@
+// src/pages/SignIn.jsx - Fixed login navigation flow
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import backgroundImage from "../assets/background.jpg";
@@ -24,8 +25,17 @@ function WrenchIcon() {
 export default function SignIn() {
   const [userType, setUserType] = useState("worker");
   const [loginMethod, setLoginMethod] = useState("mobile");
+  const [mobile, setMobile] = useState("");
+  const [otp, setOtp] = useState("");
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Automatically set login method based on user type
+  const navigate = useNavigate();
+  const HARD_CODED_OTP = "123456";
+
   useEffect(() => {
     if (userType === "worker") {
       setLoginMethod("mobile");
@@ -35,21 +45,6 @@ export default function SignIn() {
     setIsOtpSent(false);
     setError("");
   }, [userType]);
-
-  // Mobile login states
-  const [mobile, setMobile] = useState("");
-  const [otp, setOtp] = useState("");
-  const [isOtpSent, setIsOtpSent] = useState(false);
-
-  // Email login states
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const navigate = useNavigate();
-  const HARD_CODED_OTP = "123456";
 
   const handleSendOtp = (e) => {
     e.preventDefault();
@@ -82,10 +77,38 @@ export default function SignIn() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Login failed");
 
+      // Store auth data
       localStorage.setItem("token", data.access);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      navigate("/worker-profile/:id");
+      console.log("✅ Worker login success, user:", data.user);
+
+      // Worker login -> check if they have a worker profile
+      // If workerProfile exists, go to their profile page
+      // Otherwise, redirect to worker-home to create profile
+
+      if (data.user.role === "worker") {
+        // Fetch user details to check if they have a workerProfile
+        const userResponse = await fetch("http://localhost:8080/api/auth/me", {
+          headers: {
+            Authorization: `Bearer ${data.access}`,
+          },
+          credentials: "include",
+        });
+
+        const userData = await userResponse.json();
+
+        if (userData.user && userData.user.workerProfile) {
+          // Worker has profile -> go to their profile page
+          navigate(`/worker-profile/${userData.user.workerProfile}`);
+        } else {
+          // No profile yet -> go to worker-home to create one
+          navigate("/worker-home");
+        }
+      } else {
+        // Customer login -> go to workers page
+        navigate("/worker-page");
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -118,6 +141,7 @@ export default function SignIn() {
       localStorage.setItem("token", data.access);
       localStorage.setItem("user", JSON.stringify(data.user));
 
+      // Customer login -> go to worker-page
       navigate("/worker-page");
     } catch (err) {
       setError(err.message);
@@ -188,7 +212,7 @@ export default function SignIn() {
                   />
                 </div>
                 {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
-                <button className="w-full bg-blue-600 text-white py-3 rounded-lg">
+                <button className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition">
                   Send OTP
                 </button>
               </form>
@@ -211,7 +235,7 @@ export default function SignIn() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg"
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400"
                 >
                   {isLoading ? "Verifying..." : "Verify OTP"}
                 </button>
@@ -253,7 +277,7 @@ export default function SignIn() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg"
+              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400"
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </button>
