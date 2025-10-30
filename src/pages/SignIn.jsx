@@ -1,4 +1,3 @@
-// src/pages/SignIn.jsx - Fixed login navigation flow
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import backgroundImage from "../assets/background.jpg";
@@ -25,17 +24,8 @@ function WrenchIcon() {
 export default function SignIn() {
   const [userType, setUserType] = useState("worker");
   const [loginMethod, setLoginMethod] = useState("mobile");
-  const [mobile, setMobile] = useState("");
-  const [otp, setOtp] = useState("");
-  const [isOtpSent, setIsOtpSent] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
 
-  const navigate = useNavigate();
-  const HARD_CODED_OTP = "123456";
-
+  // Automatically set login method based on user type
   useEffect(() => {
     if (userType === "worker") {
       setLoginMethod("mobile");
@@ -45,6 +35,21 @@ export default function SignIn() {
     setIsOtpSent(false);
     setError("");
   }, [userType]);
+
+  // Mobile login states
+  const [mobile, setMobile] = useState("");
+  const [otp, setOtp] = useState("");
+  const [isOtpSent, setIsOtpSent] = useState(false);
+
+  // Email login states
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const navigate = useNavigate();
+  const HARD_CODED_OTP = "123456";
 
   const handleSendOtp = (e) => {
     e.preventDefault();
@@ -75,41 +80,37 @@ export default function SignIn() {
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Login failed");
+
+      console.log("Login response:", data);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
+      }
 
       // Store auth data
       localStorage.setItem("token", data.access);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      console.log("✅ Worker login success, user:", data.user);
+      console.log("Login successful. User data:", data.user);
 
-      // Worker login -> check if they have a worker profile
-      // If workerProfile exists, go to their profile page
-      // Otherwise, redirect to worker-home to create profile
-
-      if (data.user.role === "worker") {
-        // Fetch user details to check if they have a workerProfile
-        const userResponse = await fetch("http://localhost:8080/api/auth/me", {
-          headers: {
-            Authorization: `Bearer ${data.access}`,
-          },
-          credentials: "include",
-        });
-
-        const userData = await userResponse.json();
-
-        if (userData.user && userData.user.workerProfile) {
-          // Worker has profile -> go to their profile page
-          navigate(`/worker-profile/${userData.user.workerProfile}`);
+      // Navigate based on whether worker has profile
+      if (userType === "worker") {
+        if (data.user.hasProfile && data.user.workerProfile) {
+          // Worker has profile, go to their profile page
+          console.log("Navigating to worker profile:", data.user.workerProfile);
+          navigate(`/worker-profile/${data.user.workerProfile}`);
         } else {
-          // No profile yet -> go to worker-home to create one
+          // Worker needs to create profile
+          console.log("Navigating to worker home to create profile");
           navigate("/worker-home");
         }
       } else {
-        // Customer login -> go to workers page
-        navigate("/worker-page");
+        // Customer goes to customer home
+        console.log("Navigating to customer home");
+        navigate("/customer-home");
       }
     } catch (err) {
+      console.error("Login error:", err);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -136,14 +137,20 @@ export default function SignIn() {
       );
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Login failed");
+
+      console.log("Email login response:", data);
+
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
+      }
 
       localStorage.setItem("token", data.access);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      // Customer login -> go to worker-page
+      console.log("Email login successful. Navigating to worker page");
       navigate("/worker-page");
     } catch (err) {
+      console.error("Email login error:", err);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -228,6 +235,7 @@ export default function SignIn() {
                     onChange={(e) => setOtp(e.target.value)}
                     className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter OTP"
+                    maxLength="6"
                     required
                   />
                 </div>
@@ -238,6 +246,13 @@ export default function SignIn() {
                   className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-blue-400"
                 >
                   {isLoading ? "Verifying..." : "Verify OTP"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsOtpSent(false)}
+                  className="w-full mt-3 text-sm text-blue-600 hover:underline"
+                >
+                  Change mobile number
                 </button>
               </form>
             )}

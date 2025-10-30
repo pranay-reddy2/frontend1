@@ -4,16 +4,36 @@ import backgroundImage from "../assets/background.jpg";
 
 function SearchIcon() {
   return (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+      />
     </svg>
   );
 }
 
 function BriefcaseIcon() {
   return (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+      />
     </svg>
   );
 }
@@ -22,7 +42,7 @@ export default function CustomerHome() {
   const [isProfileComplete, setIsProfileComplete] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  
+
   const [formData, setFormData] = useState({
     fullName: "",
     address: "",
@@ -61,7 +81,10 @@ export default function CustomerHome() {
       setError("Pincode must be 6 digits");
       return false;
     }
-    if (formData.alternatePhone && !/^\+?[0-9]{10,13}$/.test(formData.alternatePhone.replace(/\s/g, ""))) {
+    if (
+      formData.alternatePhone &&
+      !/^\+?[0-9]{10,13}$/.test(formData.alternatePhone.replace(/\s/g, ""))
+    ) {
       setError("Please enter a valid alternate phone number");
       return false;
     }
@@ -70,7 +93,7 @@ export default function CustomerHome() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
 
     setIsLoading(true);
@@ -115,8 +138,12 @@ export default function CustomerHome() {
     >
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
         <div className="mb-6">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Complete Your Profile</h2>
-          <p className="text-gray-600">Help us serve you better by completing your details</p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+            Complete Your Profile
+          </h2>
+          <p className="text-gray-600">
+            Help us serve you better by completing your details
+          </p>
         </div>
 
         <form onSubmit={handleSubmit}>

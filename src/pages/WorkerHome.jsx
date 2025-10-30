@@ -16,8 +16,10 @@ export default function WorkerHome() {
   const timerRef = useRef(null);
   const navigate = useNavigate();
 
-  // Get API key from environment variable
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  // ✅ FIXED: Properly initialize GoogleGenerativeAI
+  const apiKey =
+    import.meta.env.VITE_GEMINI_API_KEY ||
+    "AIzaSyCimq7Mcl27O8Z96O8gqiPz-qRbw55H7N4";
   const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
   const [formData, setFormData] = useState({
@@ -128,16 +130,20 @@ export default function WorkerHome() {
     setError(null);
     if (inputMethod === "text") {
       if (!formData.experience.trim()) {
-        setError("Add experience");
+        setError("Please describe your work experience");
+        return false;
+      }
+      if (formData.experience.trim().length < 10) {
+        setError("Please provide more details (at least 10 characters)");
         return false;
       }
       if (!formData.skills.trim()) {
-        setError("Add at least one skill");
+        setError("Please list at least one skill");
         return false;
       }
     } else {
       if (!formData.voiceBlob) {
-        setError("Record your introduction");
+        setError("Please record your introduction");
         return false;
       }
     }
@@ -147,30 +153,38 @@ export default function WorkerHome() {
   const validateStep2 = () => {
     setError(null);
     if (!/^\d{12}$/.test(formData.aadhaarNumber.trim())) {
-      setError("Aadhaar must be 12 digits");
+      setError("Aadhaar must be exactly 12 digits");
       return false;
     }
     if (!formData.profileImage) {
-      setError("Upload profile photo");
+      setError("Please upload a profile photo");
       return false;
     }
     return true;
   };
 
   const convertSpeechToText = async (audioBlob) => {
+    console.log("🎙️ Converting speech to text...");
+
     if (!genAI) {
-      console.error("Google AI API key not configured");
-      return "API key not configured - Unable to transcribe";
+      console.error("❌ Google AI API key not configured");
+      return "API key not configured. Please add VITE_GEMINI_API_KEY to your .env file";
     }
 
     try {
-      const base64Audio = await new Promise((res, rej) => {
+      // Convert audio blob to base64
+      const base64Audio = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => res(reader.result.split(",")[1]);
-        reader.onerror = rej;
+        reader.onloadend = () => {
+          const base64 = reader.result.split(",")[1];
+          console.log("✅ Audio converted to base64");
+          resolve(base64);
+        };
+        reader.onerror = reject;
         reader.readAsDataURL(audioBlob);
       });
 
+      console.log("🤖 Calling Gemini API for transcription...");
       const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
       const result = await model.generateContent({
@@ -185,7 +199,7 @@ export default function WorkerHome() {
                 },
               },
               {
-                text: "This audio file is in a local Indian language (Telugu, Hindi, Kannada, Odia, Bengali, Tamil, Urdu, or English). Identify the language and transcribe it into clear English text. Extract the person's work experience and skills.",
+                text: "This audio file contains a worker introducing themselves in a local Indian language (Telugu, Hindi, Kannada, Odia, Bengali, Tamil, Urdu, or English). Please transcribe the audio into clear English text and extract: 1) Their work experience (years and type of work) 2) Their skills or specializations. Format the response as: Experience: [details]. Skills: [comma-separated list].",
               },
             ],
           },
@@ -195,13 +209,21 @@ export default function WorkerHome() {
       const text =
         result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
         result?.response?.text?.() ||
-        "No text detected";
+        "No text could be extracted from the audio";
 
-      console.log("STT result:", text);
+      console.log("✅ Transcription result:", text);
       return text;
     } catch (err) {
-      console.error("STT error:", err);
-      return "Unable to transcribe audio. Please try text input instead.";
+      console.error("❌ Speech-to-text error:", err);
+
+      if (err.message?.includes("API key")) {
+        return "Invalid API key. Please check your VITE_GEMINI_API_KEY";
+      }
+      if (err.message?.includes("quota")) {
+        return "API quota exceeded. Please try again later or use text input.";
+      }
+
+      return `Unable to transcribe audio: ${err.message}. Please use text input instead.`;
     }
   };
 
@@ -215,6 +237,8 @@ export default function WorkerHome() {
     setError(null);
 
     try {
+      console.log("🚀 Starting profile submission...");
+
       // 🔐 Check authentication
       const authToken = getAuthToken();
       if (!authToken) {
@@ -226,9 +250,27 @@ export default function WorkerHome() {
       // 🎙️ Prepare text description (voice or manual input)
       let textDesc = "";
       if (inputMethod === "voice") {
+        console.log("📝 Processing voice input...");
         textDesc = await convertSpeechToText(formData.voiceBlob);
+
+        // Check if transcription failed
+        if (
+          textDesc.includes("Unable to transcribe") ||
+          textDesc.includes("API key not configured") ||
+          textDesc.includes("quota exceeded")
+        ) {
+          setError(textDesc + " Please use text input instead.");
+          setIsLoading(false);
+          return;
+        }
+
+        console.log(
+          "✅ Voice transcribed:",
+          textDesc.substring(0, 100) + "..."
+        );
       } else {
         textDesc = `Experience: ${formData.experience.trim()}. Skills: ${formData.skills.trim()}`;
+        console.log("✅ Using manual text input");
       }
 
       // 🧾 Build form data
@@ -236,9 +278,12 @@ export default function WorkerHome() {
       data.append("text", textDesc);
       data.append("aadhaarNumber", formData.aadhaarNumber.trim());
       data.append("photo", formData.profileImage);
+
       if (formData.aadhaarImage) {
         data.append("aadhaar", formData.aadhaarImage);
       }
+
+      console.log("📤 Sending profile data to backend...");
 
       // 🚀 Send POST request
       const resp = await fetchWithAuth(API_ENDPOINTS.WORKER.GENERATE_CARD, {
@@ -248,24 +293,28 @@ export default function WorkerHome() {
 
       // 🧩 Parse the response body ONCE
       const json = await resp.json();
+      console.log("📥 Backend response:", json);
 
       // ❌ Handle server errors
       if (!resp.ok) {
         throw new Error(json.error || json.message || "Failed to save profile");
       }
 
-      console.log("Profile created:", json);
+      console.log("✅ Profile created successfully!");
       alert("Profile saved successfully!");
 
       // ✅ Navigate to worker profile if ID exists
       if (json.worker && json.worker._id) {
+        console.log("🔄 Navigating to profile:", json.worker._id);
         navigate(`/worker-profile/${json.worker._id}`);
       } else {
-        console.error("Worker ID not returned:", json);
-        setError("Profile created but ID missing. Please refresh.");
+        console.error("⚠️ Worker ID not returned:", json);
+        setError(
+          "Profile created but ID missing. Please refresh and try again."
+        );
       }
     } catch (err) {
-      console.error("Submit error:", err);
+      console.error("❌ Submit error:", err);
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
       setIsLoading(false);
