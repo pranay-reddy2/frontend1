@@ -229,7 +229,7 @@ export default function SearchWorkers() {
   };
 
   const handleWorkerClick = (workerId) => {
-    navigate(`/worker-profile/${workerId}`);
+    navigate(`/worker/${workerId}`);
   };
 
   return (

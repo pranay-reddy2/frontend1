@@ -1,10 +1,9 @@
-// src/pages/WorkerProfile.jsx - COMPLETE ENHANCED VERSION
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { getUserData } from "../config/api";
-import backgroundImage from "../assets/background.jpg";
 import NotificationBell from "../components/NotificationBell";
-// Icons
+
+// Star Icon Component
 function StarIcon({ filled }) {
   return (
     <svg
@@ -23,7 +22,7 @@ function StarIcon({ filled }) {
   );
 }
 
-export default function EnhancedWorkerProfile() {
+export default function WorkerOwnProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const currentUser = getUserData();
@@ -33,21 +32,6 @@ export default function EnhancedWorkerProfile() {
   const [contactRequests, setContactRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [role, setRole] = useState(null);
-  const [isOwner, setIsOwner] = useState(false);
-
-  // Contact modal
-  const [showContactModal, setShowContactModal] = useState(false);
-  const [contactForm, setContactForm] = useState({
-    message: "",
-    serviceRequired: "",
-    preferredDateTime: "",
-    urgency: "medium",
-    estimatedBudget: { min: "", max: "" },
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Active tab
   const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
@@ -72,11 +56,16 @@ export default function EnhancedWorkerProfile() {
       if (workerRes.ok) {
         setWorker(workerData.worker);
 
-        if (currentUser && workerData.worker.createdBy === currentUser.id) {
-          setIsOwner(true);
-          // Fetch contact requests for owner
-          fetchContactRequests();
+        // ✅ Fixed: Verify this is the worker's own profile
+        if (currentUser && currentUser.role === "worker") {
+          if (currentUser.workerProfile !== id) {
+            setError("Unauthorized access");
+            return;
+          }
         }
+
+        // Fetch contact requests if valid
+        fetchContactRequests();
       } else {
         throw new Error(workerData.error || "Worker not found");
       }
@@ -102,9 +91,7 @@ export default function EnhancedWorkerProfile() {
       const response = await fetch(
         "http://localhost:8080/api/contacts/worker",
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
         }
       );
       const data = await response.json();
@@ -113,52 +100,6 @@ export default function EnhancedWorkerProfile() {
       }
     } catch (err) {
       console.error("Fetch contact requests error:", err);
-    }
-  };
-
-  const handleContactSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        alert("Please login to contact this worker");
-        navigate("/");
-        return;
-      }
-
-      const response = await fetch("http://localhost:8080/api/contacts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          workerId: id,
-          ...contactForm,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert("Contact request sent successfully!");
-        setShowContactModal(false);
-        setContactForm({
-          message: "",
-          serviceRequired: "",
-          preferredDateTime: "",
-          urgency: "medium",
-          estimatedBudget: { min: "", max: "" },
-        });
-      } else {
-        throw new Error(data.error || "Failed to send contact request");
-      }
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -189,15 +130,11 @@ export default function EnhancedWorkerProfile() {
     }
   };
 
+  // ------------------- UI Rendering -------------------
+
   if (isLoading) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{
-          backgroundImage: `url(${backgroundImage})`,
-          backgroundSize: "cover",
-        }}
-      >
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
         <div className="bg-white rounded-2xl shadow-xl p-8">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto"></div>
           <p className="text-gray-700 mt-4 text-center">Loading profile...</p>
@@ -208,22 +145,16 @@ export default function EnhancedWorkerProfile() {
 
   if (error || !worker) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center p-4"
-        style={{
-          backgroundImage: `url(${backgroundImage})`,
-          backgroundSize: "cover",
-        }}
-      >
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md text-center">
           <div className="text-red-600 text-6xl mb-4">⚠️</div>
           <h2 className="text-2xl font-bold mb-2">Profile Not Found</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
-            onClick={() => navigate("/worker-page")}
+            onClick={() => navigate("/worker-home")}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700"
           >
-            ← Back to Search
+            ← Back to Home
           </button>
         </div>
       </div>
@@ -231,13 +162,7 @@ export default function EnhancedWorkerProfile() {
   }
 
   return (
-    <div
-      className="min-h-screen p-4 md:p-8"
-      style={{
-        backgroundImage: `url(${backgroundImage})`,
-        backgroundSize: "cover",
-      }}
-    >
+    <div className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-blue-50 to-indigo-50">
       <div className="max-w-6xl mx-auto">
         {/* Header Card */}
         <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 mb-6">
@@ -261,20 +186,19 @@ export default function EnhancedWorkerProfile() {
               </svg>
               Back
             </button>
-            {isOwner && (
+
+            <div className="flex items-center gap-4">
+              <NotificationBell />
               <button
                 onClick={() => navigate(`/worker-home?edit=${id}`)}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700"
               >
                 Edit Profile
               </button>
-            )}
-            <div className="flex items-center gap-4">
-              <NotificationBell />
-              {/* Other header items */}
             </div>
           </div>
 
+          {/* Profile Section */}
           <div className="flex flex-col md:flex-row gap-6 items-start">
             {/* Profile Image */}
             <div className="flex-shrink-0">
@@ -329,7 +253,7 @@ export default function EnhancedWorkerProfile() {
                 </div>
                 <span className="text-gray-600">•</span>
                 <span className="text-gray-700 font-medium">
-                  {worker.stats?.completedJobs || "50+"}Jobs Completed
+                  {worker.stats?.completedJobs || "50+"} Jobs Completed
                 </span>
               </div>
 
@@ -363,63 +287,31 @@ export default function EnhancedWorkerProfile() {
               )}
             </div>
           </div>
-
-          {/* Contact Button */}
-          {!isOwner && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <button
-                onClick={() => setShowContactModal(true)}
-                className="w-full md:w-auto bg-green-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-green-700 flex items-center justify-center gap-2"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                  />
-                </svg>
-                Contact Worker
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* Tabs */}
+        {/* Tabs Section */}
         <div className="bg-white rounded-3xl shadow-2xl mb-6 overflow-hidden">
           <div className="flex border-b border-gray-200">
-            {[
-              "overview",
-              "reviews",
-              isOwner && "requests",
-              isOwner && "analytics",
-            ]
-              .filter(Boolean)
-              .map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex-1 py-4 px-6 font-semibold transition-colors ${
-                    activeTab === tab
-                      ? "bg-blue-600 text-white"
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
+            {["overview", "reviews", "requests", "analytics"].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-4 px-6 font-semibold transition-colors ${
+                  activeTab === tab
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
           </div>
 
+          {/* Tab Content */}
           <div className="p-6">
-            {/* Overview Tab */}
+            {/* Overview */}
             {activeTab === "overview" && (
               <div className="space-y-6">
-                {/* Availability */}
                 {worker.availability && (
                   <div className="bg-gray-50 rounded-xl p-6">
                     <h3 className="text-lg font-bold mb-4">Availability</h3>
@@ -440,7 +332,6 @@ export default function EnhancedWorkerProfile() {
                   </div>
                 )}
 
-                {/* Pricing */}
                 {worker.pricing && (
                   <div className="bg-gray-50 rounded-xl p-6">
                     <h3 className="text-lg font-bold mb-4">Pricing</h3>
@@ -474,35 +365,10 @@ export default function EnhancedWorkerProfile() {
                     </div>
                   </div>
                 )}
-
-                {/* Certifications */}
-                {worker.certifications && worker.certifications.length > 0 && (
-                  <div className="bg-gray-50 rounded-xl p-6">
-                    <h3 className="text-lg font-bold mb-4">Certifications</h3>
-                    <div className="space-y-3">
-                      {worker.certifications.map((cert, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between bg-white p-4 rounded-lg"
-                        >
-                          <div>
-                            <p className="font-semibold">{cert.name}</p>
-                            <p className="text-sm text-gray-600">
-                              {cert.issuedBy}
-                            </p>
-                          </div>
-                          <p className="text-sm text-gray-500">
-                            {new Date(cert.issuedDate).getFullYear()}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
-            {/* Reviews Tab */}
+            {/* Reviews */}
             {activeTab === "reviews" && (
               <div className="space-y-4">
                 {reviews.length === 0 ? (
@@ -537,8 +403,8 @@ export default function EnhancedWorkerProfile() {
               </div>
             )}
 
-            {/* Contact Requests Tab (Owner Only) */}
-            {activeTab === "requests" && isOwner && (
+            {/* Contact Requests */}
+            {activeTab === "requests" && (
               <div className="space-y-4">
                 {contactRequests.length === 0 ? (
                   <p className="text-center text-gray-600 py-8">
@@ -627,139 +493,41 @@ export default function EnhancedWorkerProfile() {
                 )}
               </div>
             )}
+
+            {/* Analytics */}
+            {activeTab === "analytics" && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-blue-50 rounded-xl p-6">
+                    <h4 className="text-sm text-blue-600 font-semibold mb-2">
+                      Total Requests
+                    </h4>
+                    <p className="text-3xl font-bold text-blue-700">
+                      {contactRequests.length}
+                    </p>
+                  </div>
+                  <div className="bg-green-50 rounded-xl p-6">
+                    <h4 className="text-sm text-green-600 font-semibold mb-2">
+                      Completed Jobs
+                    </h4>
+                    <p className="text-3xl font-bold text-green-700">
+                      {worker.stats?.completedJobs || "0"}
+                    </p>
+                  </div>
+                  <div className="bg-yellow-50 rounded-xl p-6">
+                    <h4 className="text-sm text-yellow-600 font-semibold mb-2">
+                      Average Rating
+                    </h4>
+                    <p className="text-3xl font-bold text-yellow-700">
+                      {worker.rating?.average || "4.5"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Contact Modal */}
-      {showContactModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Contact {worker.fullName}</h2>
-              <button
-                onClick={() => setShowContactModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <form onSubmit={handleContactSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Service Required *
-                </label>
-                <input
-                  type="text"
-                  value={contactForm.serviceRequired}
-                  onChange={(e) =>
-                    setContactForm({
-                      ...contactForm,
-                      serviceRequired: e.target.value,
-                    })
-                  }
-                  className="w-full p-3 border rounded-lg"
-                  placeholder="e.g., Plumbing repair"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Message
-                </label>
-                <textarea
-                  value={contactForm.message}
-                  onChange={(e) =>
-                    setContactForm({ ...contactForm, message: e.target.value })
-                  }
-                  className="w-full p-3 border rounded-lg"
-                  rows="3"
-                  placeholder="Describe your requirements..."
-                ></textarea>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Urgency
-                </label>
-                <select
-                  value={contactForm.urgency}
-                  onChange={(e) =>
-                    setContactForm({ ...contactForm, urgency: e.target.value })
-                  }
-                  className="w-full p-3 border rounded-lg"
-                >
-                  <option value="low">Low - Can wait</option>
-                  <option value="medium">Medium - Few days</option>
-                  <option value="high">High - Urgent</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Estimated Budget (₹)
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    value={contactForm.estimatedBudget.min}
-                    onChange={(e) =>
-                      setContactForm({
-                        ...contactForm,
-                        estimatedBudget: {
-                          ...contactForm.estimatedBudget,
-                          min: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full p-3 border rounded-lg"
-                    placeholder="Min"
-                  />
-                  <input
-                    type="number"
-                    value={contactForm.estimatedBudget.max}
-                    onChange={(e) =>
-                      setContactForm({
-                        ...contactForm,
-                        estimatedBudget: {
-                          ...contactForm.estimatedBudget,
-                          max: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full p-3 border rounded-lg"
-                    placeholder="Max"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className={`w-full py-3 rounded-lg font-semibold text-white ${
-                  isSubmitting ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
-                }`}
-              >
-                {isSubmitting ? "Sending..." : "Send Request"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
