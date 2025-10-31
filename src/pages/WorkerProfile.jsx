@@ -1,14 +1,10 @@
-// src/pages/WorkerProfile.jsx - Complete Worker Profile Page
+// src/pages/WorkerProfile.jsx - COMPLETE ENHANCED VERSION
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  API_ENDPOINTS,
-  fetchWithAuth,
-  getAuthToken,
-  getUserData,
-} from "../config/api";
+import { getUserData } from "../config/api";
 import backgroundImage from "../assets/background.jpg";
-
+import NotificationBell from "../components/NotificationBell";
+// Icons
 function StarIcon({ filled }) {
   return (
     <svg
@@ -27,15 +23,32 @@ function StarIcon({ filled }) {
   );
 }
 
-export default function WorkerProfile() {
+export default function EnhancedWorkerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
   const currentUser = getUserData();
 
   const [worker, setWorker] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [contactRequests, setContactRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [role, setRole] = useState(null);
   const [isOwner, setIsOwner] = useState(false);
+
+  // Contact modal
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [contactForm, setContactForm] = useState({
+    message: "",
+    serviceRequired: "",
+    preferredDateTime: "",
+    urgency: "medium",
+    estimatedBudget: { min: "", max: "" },
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Active tab
+  const [activeTab, setActiveTab] = useState("overview");
 
   useEffect(() => {
     if (!id || id === "undefined") {
@@ -43,25 +56,38 @@ export default function WorkerProfile() {
       setIsLoading(false);
       return;
     }
-    fetchWorkerProfile();
+    fetchWorkerData();
   }, [id]);
 
-  const fetchWorkerProfile = async () => {
+  const fetchWorkerData = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(
+
+      // Fetch worker profile
+      const workerRes = await fetch(
         `http://localhost:8080/api/worker/worker/${id}`
       );
-      const data = await response.json();
+      const workerData = await workerRes.json();
 
-      if (response.ok) {
-        setWorker(data.worker);
-        // Check if current user owns this profile
-        if (currentUser && data.worker.createdBy === currentUser.id) {
+      if (workerRes.ok) {
+        setWorker(workerData.worker);
+
+        if (currentUser && workerData.worker.createdBy === currentUser.id) {
           setIsOwner(true);
+          // Fetch contact requests for owner
+          fetchContactRequests();
         }
       } else {
-        throw new Error(data.error || "Worker not found");
+        throw new Error(workerData.error || "Worker not found");
+      }
+
+      // Fetch reviews
+      const reviewsRes = await fetch(
+        `http://localhost:8080/api/reviews/worker/${id}`
+      );
+      const reviewsData = await reviewsRes.json();
+      if (reviewsRes.ok) {
+        setReviews(reviewsData.reviews || []);
       }
     } catch (err) {
       setError(err.message);
@@ -70,17 +96,97 @@ export default function WorkerProfile() {
     }
   };
 
-  const handleEditProfile = () => {
-    navigate(`/worker-home?edit=${id}`);
+  const fetchContactRequests = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        "http://localhost:8080/api/contacts/worker",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const data = await response.json();
+      if (response.ok) {
+        setContactRequests(data.requests || []);
+      }
+    } catch (err) {
+      console.error("Fetch contact requests error:", err);
+    }
   };
 
-  const handleContact = () => {
-    if (!getAuthToken()) {
-      alert("Please login to contact this worker");
-      navigate("/");
-      return;
+  const handleContactSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("Please login to contact this worker");
+        navigate("/");
+        return;
+      }
+
+      const response = await fetch("http://localhost:8080/api/contacts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          workerId: id,
+          ...contactForm,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert("Contact request sent successfully!");
+        setShowContactModal(false);
+        setContactForm({
+          message: "",
+          serviceRequired: "",
+          preferredDateTime: "",
+          urgency: "medium",
+          estimatedBudget: { min: "", max: "" },
+        });
+      } else {
+        throw new Error(data.error || "Failed to send contact request");
+      }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsSubmitting(false);
     }
-    alert(`Contact: ${worker.fullName}`);
+  };
+
+  const handleStatusUpdate = async (requestId, newStatus) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        `http://localhost:8080/api/contacts/${requestId}/status`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        }
+      );
+
+      if (response.ok) {
+        alert(`Request ${newStatus} successfully`);
+        fetchContactRequests();
+      } else {
+        const data = await response.json();
+        throw new Error(data.error);
+      }
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
   if (isLoading) {
@@ -132,7 +238,7 @@ export default function WorkerProfile() {
         backgroundSize: "cover",
       }}
     >
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         {/* Header Card */}
         <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 mb-6">
           <div className="flex items-start justify-between mb-4">
@@ -157,12 +263,16 @@ export default function WorkerProfile() {
             </button>
             {isOwner && (
               <button
-                onClick={handleEditProfile}
+                onClick={() => navigate(`/worker-home?edit=${id}`)}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700"
               >
                 Edit Profile
               </button>
             )}
+            <div className="flex items-center gap-4">
+              <NotificationBell />
+              {/* Other header items */}
+            </div>
           </div>
 
           <div className="flex flex-col md:flex-row gap-6 items-start">
@@ -205,13 +315,21 @@ export default function WorkerProfile() {
               <div className="flex items-center gap-6 my-4 flex-wrap">
                 <div className="flex items-center gap-1">
                   {[1, 2, 3, 4, 5].map((i) => (
-                    <StarIcon key={i} filled={i <= 4} />
+                    <StarIcon
+                      key={i}
+                      filled={i <= Math.floor(worker.rating?.average || 4)}
+                    />
                   ))}
-                  <span className="ml-2 text-gray-700 font-bold">4.5</span>
+                  <span className="ml-2 text-gray-700 font-bold">
+                    {worker.rating?.average || "4.5"}
+                  </span>
+                  <span className="text-gray-500 text-sm">
+                    ({worker.rating?.count || reviews.length} reviews)
+                  </span>
                 </div>
                 <span className="text-gray-600">•</span>
                 <span className="text-gray-700 font-medium">
-                  50+ Jobs Completed
+                  {worker.stats?.completedJobs || "50+"}Jobs Completed
                 </span>
               </div>
 
@@ -250,7 +368,7 @@ export default function WorkerProfile() {
           {!isOwner && (
             <div className="mt-6 pt-6 border-t border-gray-200">
               <button
-                onClick={handleContact}
+                onClick={() => setShowContactModal(true)}
                 className="w-full md:w-auto bg-green-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-green-700 flex items-center justify-center gap-2"
               >
                 <svg
@@ -272,27 +390,376 @@ export default function WorkerProfile() {
           )}
         </div>
 
-        {/* Endorsements Section */}
-        {worker.endorsements && worker.endorsements.length > 0 && (
-          <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Endorsements
-            </h2>
-            <div className="space-y-4">
-              {worker.endorsements
-                .filter((e) => e.accepted)
-                .map((endorsement, idx) => (
-                  <div key={idx} className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-gray-700 mb-2">"{endorsement.text}"</p>
-                    <p className="text-sm text-gray-500">
-                      — {endorsement.endorserName}
-                    </p>
-                  </div>
-                ))}
-            </div>
+        {/* Tabs */}
+        <div className="bg-white rounded-3xl shadow-2xl mb-6 overflow-hidden">
+          <div className="flex border-b border-gray-200">
+            {[
+              "overview",
+              "reviews",
+              isOwner && "requests",
+              isOwner && "analytics",
+            ]
+              .filter(Boolean)
+              .map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`flex-1 py-4 px-6 font-semibold transition-colors ${
+                    activeTab === tab
+                      ? "bg-blue-600 text-white"
+                      : "text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
           </div>
-        )}
+
+          <div className="p-6">
+            {/* Overview Tab */}
+            {activeTab === "overview" && (
+              <div className="space-y-6">
+                {/* Availability */}
+                {worker.availability && (
+                  <div className="bg-gray-50 rounded-xl p-6">
+                    <h3 className="text-lg font-bold mb-4">Availability</h3>
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          worker.availability.available
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                        }`}
+                      ></div>
+                      <span className="font-semibold">
+                        {worker.availability.available
+                          ? "Available Now"
+                          : "Currently Unavailable"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Pricing */}
+                {worker.pricing && (
+                  <div className="bg-gray-50 rounded-xl p-6">
+                    <h3 className="text-lg font-bold mb-4">Pricing</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {worker.pricing.hourlyRate && (
+                        <div>
+                          <p className="text-sm text-gray-600">Hourly Rate</p>
+                          <p className="text-xl font-bold text-blue-600">
+                            ₹{worker.pricing.hourlyRate}
+                          </p>
+                        </div>
+                      )}
+                      {worker.pricing.minimumCharge && (
+                        <div>
+                          <p className="text-sm text-gray-600">
+                            Minimum Charge
+                          </p>
+                          <p className="text-xl font-bold text-blue-600">
+                            ₹{worker.pricing.minimumCharge}
+                          </p>
+                        </div>
+                      )}
+                      {worker.pricing.calloutFee && (
+                        <div>
+                          <p className="text-sm text-gray-600">Callout Fee</p>
+                          <p className="text-xl font-bold text-blue-600">
+                            ₹{worker.pricing.calloutFee}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Certifications */}
+                {worker.certifications && worker.certifications.length > 0 && (
+                  <div className="bg-gray-50 rounded-xl p-6">
+                    <h3 className="text-lg font-bold mb-4">Certifications</h3>
+                    <div className="space-y-3">
+                      {worker.certifications.map((cert, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between bg-white p-4 rounded-lg"
+                        >
+                          <div>
+                            <p className="font-semibold">{cert.name}</p>
+                            <p className="text-sm text-gray-600">
+                              {cert.issuedBy}
+                            </p>
+                          </div>
+                          <p className="text-sm text-gray-500">
+                            {new Date(cert.issuedDate).getFullYear()}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Reviews Tab */}
+            {activeTab === "reviews" && (
+              <div className="space-y-4">
+                {reviews.length === 0 ? (
+                  <p className="text-center text-gray-600 py-8">
+                    No reviews yet
+                  </p>
+                ) : (
+                  reviews.map((review) => (
+                    <div key={review._id} className="bg-gray-50 rounded-xl p-6">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          {[1, 2, 3, 4, 5].map((i) => (
+                            <StarIcon key={i} filled={i <= review.rating} />
+                          ))}
+                        </div>
+                        <span className="text-sm text-gray-500">
+                          {new Date(review.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <p className="text-gray-700 mb-2">{review.reviewText}</p>
+                      <p className="text-sm text-gray-600">
+                        — {review.customer?.email || "Anonymous"}
+                      </p>
+                      {review.verified && (
+                        <span className="inline-block mt-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                          Verified Purchase
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Contact Requests Tab (Owner Only) */}
+            {activeTab === "requests" && isOwner && (
+              <div className="space-y-4">
+                {contactRequests.length === 0 ? (
+                  <p className="text-center text-gray-600 py-8">
+                    No contact requests yet
+                  </p>
+                ) : (
+                  contactRequests.map((request) => (
+                    <div
+                      key={request._id}
+                      className="bg-gray-50 rounded-xl p-6"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="font-bold text-lg">
+                            {request.serviceRequired}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            From:{" "}
+                            {request.customer?.email ||
+                              request.customer?.mobile}
+                          </p>
+                          {request.customerProfile && (
+                            <p className="text-sm text-gray-600">
+                              📍 {request.customerProfile.city},{" "}
+                              {request.customerProfile.state}
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                            request.status === "pending"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : request.status === "accepted"
+                              ? "bg-green-100 text-green-700"
+                              : request.status === "completed"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {request.status}
+                        </span>
+                      </div>
+
+                      <p className="text-gray-700 mb-3">{request.message}</p>
+
+                      {request.estimatedBudget && (
+                        <p className="text-sm text-gray-600 mb-3">
+                          Budget: ₹{request.estimatedBudget.min} - ₹
+                          {request.estimatedBudget.max}
+                        </p>
+                      )}
+
+                      {request.status === "pending" && (
+                        <div className="flex gap-3 mt-4">
+                          <button
+                            onClick={() =>
+                              handleStatusUpdate(request._id, "accepted")
+                            }
+                            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleStatusUpdate(request._id, "rejected")
+                            }
+                            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      )}
+
+                      {request.status === "accepted" && (
+                        <button
+                          onClick={() =>
+                            handleStatusUpdate(request._id, "completed")
+                          }
+                          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 mt-4"
+                        >
+                          Mark as Completed
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Contact Modal */}
+      {showContactModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Contact {worker.fullName}</h2>
+              <button
+                onClick={() => setShowContactModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <form onSubmit={handleContactSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Service Required *
+                </label>
+                <input
+                  type="text"
+                  value={contactForm.serviceRequired}
+                  onChange={(e) =>
+                    setContactForm({
+                      ...contactForm,
+                      serviceRequired: e.target.value,
+                    })
+                  }
+                  className="w-full p-3 border rounded-lg"
+                  placeholder="e.g., Plumbing repair"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Message
+                </label>
+                <textarea
+                  value={contactForm.message}
+                  onChange={(e) =>
+                    setContactForm({ ...contactForm, message: e.target.value })
+                  }
+                  className="w-full p-3 border rounded-lg"
+                  rows="3"
+                  placeholder="Describe your requirements..."
+                ></textarea>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Urgency
+                </label>
+                <select
+                  value={contactForm.urgency}
+                  onChange={(e) =>
+                    setContactForm({ ...contactForm, urgency: e.target.value })
+                  }
+                  className="w-full p-3 border rounded-lg"
+                >
+                  <option value="low">Low - Can wait</option>
+                  <option value="medium">Medium - Few days</option>
+                  <option value="high">High - Urgent</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Estimated Budget (₹)
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="number"
+                    value={contactForm.estimatedBudget.min}
+                    onChange={(e) =>
+                      setContactForm({
+                        ...contactForm,
+                        estimatedBudget: {
+                          ...contactForm.estimatedBudget,
+                          min: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full p-3 border rounded-lg"
+                    placeholder="Min"
+                  />
+                  <input
+                    type="number"
+                    value={contactForm.estimatedBudget.max}
+                    onChange={(e) =>
+                      setContactForm({
+                        ...contactForm,
+                        estimatedBudget: {
+                          ...contactForm.estimatedBudget,
+                          max: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full p-3 border rounded-lg"
+                    placeholder="Max"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className={`w-full py-3 rounded-lg font-semibold text-white ${
+                  isSubmitting ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
+                }`}
+              >
+                {isSubmitting ? "Sending..." : "Send Request"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

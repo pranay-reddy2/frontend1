@@ -347,7 +347,14 @@ export default function SearchWorkers() {
                       {worker.verified && <VerifiedBadge />}
                     </div>
                     <div className="flex items-center gap-3 text-sm text-gray-700 mt-2">
-                      <span>⭐ {worker.rating} / 5</span>
+                      <span>
+                        ⭐{" "}
+                        {typeof worker.rating === "object"
+                          ? worker.rating.average
+                          : worker.rating}{" "}
+                        / 5
+                      </span>
+
                       {worker.distance && (
                         <span className="text-green-600">
                           📍 {worker.distance.toFixed(1)} km away
