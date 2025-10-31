@@ -47,16 +47,14 @@ export default function WorkerOwnProfile() {
     try {
       setIsLoading(true);
 
-      // Fetch worker profile
-      const workerRes = await fetch(
-        `http://localhost:8080/api/worker/worker/${id}`
-      );
+      // ✅ Fixed URL here
+      const workerRes = await fetch(`http://localhost:8080/api/worker/${id}`);
       const workerData = await workerRes.json();
 
       if (workerRes.ok) {
         setWorker(workerData.worker);
 
-        // ✅ Fixed: Verify this is the worker's own profile
+        // Verify this is the worker's own profile
         if (currentUser && currentUser.role === "worker") {
           if (currentUser.workerProfile !== id) {
             setError("Unauthorized access");
@@ -64,8 +62,7 @@ export default function WorkerOwnProfile() {
           }
         }
 
-        // Fetch contact requests if valid
-        fetchContactRequests();
+        fetchContactRequests(); // load contact requests
       } else {
         throw new Error(workerData.error || "Worker not found");
       }
@@ -84,22 +81,25 @@ export default function WorkerOwnProfile() {
       setIsLoading(false);
     }
   };
-
   const fetchContactRequests = async () => {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        "http://localhost:8080/api/contacts/worker",
+        `http://localhost:8080/api/contacts/worker/${id}`,
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
       const data = await response.json();
       if (response.ok) {
         setContactRequests(data.requests || []);
+      } else {
+        throw new Error(data.error || "Failed to load contact requests");
       }
     } catch (err) {
-      console.error("Fetch contact requests error:", err);
+      console.error("Error loading contact requests:", err);
     }
   };
 
