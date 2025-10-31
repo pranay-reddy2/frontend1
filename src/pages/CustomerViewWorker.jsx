@@ -8,6 +8,17 @@ export default function CustomerViewWorker() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Hire modal state
+  const [showHireModal, setShowHireModal] = useState(false);
+  const [hireLoading, setHireLoading] = useState(false);
+  const [hireData, setHireData] = useState({
+    serviceRequired: "",
+    message: "",
+    urgency: "medium",
+    preferredDateTime: "",
+    estimatedBudget: { min: "", max: "" },
+  });
+
   // Fetch worker details when ID changes
   useEffect(() => {
     fetchWorkerDetails();
@@ -25,7 +36,6 @@ export default function CustomerViewWorker() {
         throw new Error(data.message || "Failed to load worker profile");
       }
 
-      // In case API structure differs
       setWorker(data.worker || data);
     } catch (err) {
       console.error("Error loading worker:", err);
@@ -36,8 +46,95 @@ export default function CustomerViewWorker() {
   };
 
   const handleHireClick = () => {
-    alert(`Hire request sent to ${worker.fullName}!`);
-    // later: POST /api/request with customer + worker IDs
+    // Pre-fill service with worker's profession
+    setHireData((prev) => ({
+      ...prev,
+      serviceRequired: worker.profession || "",
+    }));
+    setShowHireModal(true);
+  };
+
+  const handleHireSubmit = async (e) => {
+    e.preventDefault();
+    setHireLoading(true);
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        alert("Please sign in to hire workers");
+        navigate("/");
+        return;
+      }
+
+      // Prepare the request data
+      const requestData = {
+        workerId: id,
+        serviceRequired: hireData.serviceRequired,
+        message: hireData.message,
+        urgency: hireData.urgency,
+        preferredDateTime: hireData.preferredDateTime || null,
+        estimatedBudget: {
+          min: parseFloat(hireData.estimatedBudget.min) || 0,
+          max: parseFloat(hireData.estimatedBudget.max) || 0,
+        },
+      };
+
+      const response = await fetch("http://localhost:8080/api/contacts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(requestData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send hire request");
+      }
+
+      // Success!
+      alert(`✅ Hire request sent to ${worker.fullName} successfully!`);
+      setShowHireModal(false);
+
+      // Reset form
+      setHireData({
+        serviceRequired: "",
+        message: "",
+        urgency: "medium",
+        preferredDateTime: "",
+        estimatedBudget: { min: "", max: "" },
+      });
+
+      // Optionally navigate to requests page
+      // navigate("/customer-requests");
+    } catch (err) {
+      console.error("Hire request error:", err);
+      alert(`❌ Error: ${err.message}`);
+    } finally {
+      setHireLoading(false);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+
+    if (name.startsWith("budget.")) {
+      const budgetField = name.split(".")[1];
+      setHireData((prev) => ({
+        ...prev,
+        estimatedBudget: {
+          ...prev.estimatedBudget,
+          [budgetField]: value,
+        },
+      }));
+    } else {
+      setHireData((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
   };
 
   if (isLoading)
@@ -183,6 +280,139 @@ export default function CustomerViewWorker() {
           </button>
         </div>
       </div>
+
+      {/* Hire Modal */}
+      {showHireModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Hire {worker.fullName}
+              </h2>
+              <button
+                onClick={() => setShowHireModal(false)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleHireSubmit} className="p-6 space-y-4">
+              {/* Service Required */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Service Required *
+                </label>
+                <input
+                  type="text"
+                  name="serviceRequired"
+                  value={hireData.serviceRequired}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Plumbing repair, Electrical work"
+                  required
+                />
+              </div>
+
+              {/* Message */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Message / Details *
+                </label>
+                <textarea
+                  name="message"
+                  value={hireData.message}
+                  onChange={handleInputChange}
+                  rows={4}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Describe the work you need done..."
+                  required
+                />
+              </div>
+
+              {/* Urgency */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Urgency
+                </label>
+                <select
+                  name="urgency"
+                  value={hireData.urgency}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="low">Low - Can wait a week</option>
+                  <option value="medium">Medium - Within a few days</option>
+                  <option value="high">High - Urgent / ASAP</option>
+                </select>
+              </div>
+
+              {/* Preferred Date/Time */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Preferred Date/Time (Optional)
+                </label>
+                <input
+                  type="datetime-local"
+                  name="preferredDateTime"
+                  value={hireData.preferredDateTime}
+                  onChange={handleInputChange}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+
+              {/* Budget Range */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Estimated Budget (₹)
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="number"
+                    name="budget.min"
+                    value={hireData.estimatedBudget.min}
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Min"
+                    min="0"
+                  />
+                  <input
+                    type="number"
+                    name="budget.max"
+                    value={hireData.estimatedBudget.max}
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Max"
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowHireModal(false)}
+                  className="flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={hireLoading}
+                  className={`flex-1 py-3 px-4 rounded-lg font-semibold transition ${
+                    hireLoading
+                      ? "bg-blue-400 text-white cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                >
+                  {hireLoading ? "Sending..." : "Send Request"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

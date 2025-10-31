@@ -46,57 +46,106 @@ export default function WorkerOwnProfile() {
   const fetchWorkerData = async () => {
     try {
       setIsLoading(true);
+      setError(null);
 
-      // ✅ Fixed URL here
-      const workerRes = await fetch(`http://localhost:8080/api/worker/${id}`);
+      console.log("📝 Fetching worker profile:", id);
+      console.log("👤 Current user:", currentUser);
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        console.error("❌ No authentication token found");
+        setError("Please sign in to view your profile");
+        navigate("/");
+        return;
+      }
+
+      // Fetch worker profile
+      const workerRes = await fetch(`http://localhost:8080/api/worker/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
       const workerData = await workerRes.json();
+      console.log("📦 Worker data response:", workerData);
 
-      if (workerRes.ok) {
-        setWorker(workerData.worker);
-
-        // Verify this is the worker's own profile
-        if (currentUser && currentUser.role === "worker") {
-          if (currentUser.workerProfile !== id) {
-            setError("Unauthorized access");
-            return;
-          }
-        }
-
-        fetchContactRequests(); // load contact requests
-      } else {
+      if (!workerRes.ok) {
         throw new Error(workerData.error || "Worker not found");
       }
 
-      // Fetch reviews
-      const reviewsRes = await fetch(
-        `http://localhost:8080/api/reviews/worker/${id}`
-      );
-      const reviewsData = await reviewsRes.json();
-      if (reviewsRes.ok) {
-        setReviews(reviewsData.reviews || []);
+      const fetchedWorker = workerData.worker || workerData;
+      setWorker(fetchedWorker);
+
+      // ✅ FIXED: Better authorization check
+      // Check if this worker belongs to the current user
+      if (currentUser && currentUser.role === "worker") {
+        // Compare the createdBy field with current user's ID
+        const workerOwnerId =
+          fetchedWorker.createdBy?._id || fetchedWorker.createdBy;
+        const currentUserId = currentUser.id || currentUser._id;
+
+        console.log("🔐 Authorization check:");
+        console.log("  Worker owner ID:", workerOwnerId);
+        console.log("  Current user ID:", currentUserId);
+        console.log("  Worker profile from user:", currentUser.workerProfile);
+        console.log("  URL param ID:", id);
+
+        if (
+          workerOwnerId?.toString() !== currentUserId?.toString() &&
+          currentUser.workerProfile?.toString() !== id?.toString()
+        ) {
+          console.error("❌ Authorization failed");
+          setError("Unauthorized access");
+          setIsLoading(false);
+          return;
+        }
+
+        console.log("✅ Authorization passed");
       }
+
+      // Fetch reviews
+      try {
+        const reviewsRes = await fetch(
+          `http://localhost:8080/api/reviews/worker/${id}`
+        );
+        const reviewsData = await reviewsRes.json();
+        if (reviewsRes.ok) {
+          setReviews(reviewsData.reviews || []);
+        }
+      } catch (err) {
+        console.error("Error loading reviews:", err);
+      }
+
+      // Fetch contact requests
+      fetchContactRequests();
     } catch (err) {
+      console.error("❌ Error loading worker data:", err);
       setError(err.message);
     } finally {
       setIsLoading(false);
     }
   };
+
   const fetchContactRequests = async () => {
     try {
       const token = localStorage.getItem("token");
+
+      // ✅ FIXED: Use correct endpoint without worker ID
       const response = await fetch(
-        `http://localhost:8080/api/contacts/worker/${id}`,
+        `http://localhost:8080/api/contacts/worker`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         }
       );
+
       const data = await response.json();
+
       if (response.ok) {
         setContactRequests(data.requests || []);
       } else {
-        throw new Error(data.error || "Failed to load contact requests");
+        console.error("Failed to load contact requests:", data.error);
       }
     } catch (err) {
       console.error("Error loading contact requests:", err);
@@ -150,12 +199,20 @@ export default function WorkerOwnProfile() {
           <div className="text-red-600 text-6xl mb-4">⚠️</div>
           <h2 className="text-2xl font-bold mb-2">Profile Not Found</h2>
           <p className="text-gray-600 mb-6">{error}</p>
-          <button
-            onClick={() => navigate("/worker-home")}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700"
-          >
-            ← Back to Home
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={() => navigate("/worker-home")}
+              className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700"
+            >
+              Create New Profile
+            </button>
+            <button
+              onClick={() => navigate("/")}
+              className="w-full bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold hover:bg-gray-300"
+            >
+              Back to Sign In
+            </button>
+          </div>
         </div>
       </div>
     );
